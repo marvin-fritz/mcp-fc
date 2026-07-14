@@ -15,7 +15,9 @@ Streamable HTTP (stateless), scoped API keys, token-efficient pipe-table output.
 
 search_securities · get_security_snapshot · screen_stocks · get_price_history ·
 get_financials · get_insider_trades · search_funds · get_fund_holdings ·
-get_political_trades · get_macro_series · search_news
+get_political_trades · get_macro_series · search_news · get_news_for_geocoding
+
+Write tools (scope `write`): submit_news_locations
 
 ## Auth
 
@@ -27,6 +29,16 @@ Two parallel mechanisms on `POST /mcp`:
   (`financecentre.users`, read-only); role `admin` → scopes `read write`,
   `member` → `read`. JWT access tokens (1 h), rotating refresh tokens (30 d),
   PKCE + dynamic client registration. OAuth data lives in the `mcp-fc` database.
+
+## GeoNews (map feature)
+
+`newsGeo` stores one location per news (GeoJSON Point, `[lon, lat]`, WGS84 —
+MapKit: `CLLocationCoordinate2D(latitude: c[1], longitude: c[0])`) plus
+denormalized news fields (title, sourceName, link, image, pubDate, category)
+and optional pin `summary`. Agent loop: `get_news_for_geocoding` (read) →
+locate → `submit_news_locations` (**write scope**). Not-locatable news are
+stored as `locatable: false` markers. The app queries `newsGeo` directly
+(`location` has a 2dsphere index for viewport queries).
 
 ## Adding a feature
 

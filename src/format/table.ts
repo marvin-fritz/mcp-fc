@@ -3,6 +3,9 @@ export interface TableMeta {
   hasMore?: boolean;
 }
 
+const cell = (c: string | number | null | undefined): string =>
+  c == null ? '' : String(c).replace(/\|/g, '¦').replace(/[\r\n]+/g, ' ');
+
 /** Pipe-separated table without padding. First line = headers. */
 export function table(
   headers: string[],
@@ -19,7 +22,7 @@ export function table(
   }
   lines.push(headers.join('|'));
   for (const r of rows) {
-    lines.push(r.map((c) => (c == null ? '' : String(c))).join('|'));
+    lines.push(r.map(cell).join('|'));
   }
   return lines.join('\n');
 }

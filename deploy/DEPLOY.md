@@ -37,7 +37,13 @@ claude.ai → Settings → Connectors → Add custom connector →
 
 ## One-time DB preparation
 
-    npm run ensure-indexes   # creates the news full-text index
+    npm run ensure-indexes   # news full-text index + newsGeo indexes
+
+Re-run after deploying versions with schema/index changes.
+
+The geolocation agent needs a write key:
+
+    MCP_API_KEYS=agent1:<key>=read,geoagent:<key2>=read+write
 
 ## systemd
 

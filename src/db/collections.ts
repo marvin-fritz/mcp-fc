@@ -14,5 +14,6 @@ export function cols(db: Db) {
     fred: db.collection('fred'),
     economicIndicators: db.collection('economicIndicators'),
     news: db.collection('news'),
+    newsGeo: db.collection('newsGeo'),
   };
 }

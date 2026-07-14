@@ -7,6 +7,7 @@ import { fundsFeature } from './funds/index.js';
 import { politicalFeature } from './political/index.js';
 import { macroFeature } from './macro/index.js';
 import { newsFeature } from './news/index.js';
+import { geonewsFeature } from './geonews/index.js';
 
 /** All registered feature modules. Add new features here. */
 export const allFeatures: FeatureModule[] = [
@@ -18,4 +19,5 @@ export const allFeatures: FeatureModule[] = [
   politicalFeature,
   macroFeature,
   newsFeature,
+  geonewsFeature,
 ];

@@ -60,6 +60,10 @@ describe('table', () => {
     expect(out.startsWith('# rows 1-2, more available — refine filters or use offset=2\n')).toBe(true);
   });
 
+  it('sanitizes pipes and newlines inside cells', () => {
+    expect(table(['a', 'b'], [['x|y', 'l1\nl2\r\nl3']])).toBe('a|b\nx¦y|l1 l2 l3');
+  });
+
   it('adds offset meta when offset > 0', () => {
     const out = table(['a'], [['3']], { offset: 2, hasMore: false });
     expect(out.startsWith('# rows 3-3\n')).toBe(true);
