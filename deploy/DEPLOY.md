@@ -1,12 +1,15 @@
 # Deployment (plain Node, no Docker)
 
-## Build & install
+## Build & install (on the server)
 
+    git clone https://github.com/marvin-fritz/mcp-fc.git /opt/mcp-fc
+    cd /opt/mcp-fc
     npm ci
     npm run build
-    # copy to server: dist/, package.json, package-lock.json, deploy/
-    # on the server:
-    npm ci --omit=dev
+
+Updates later:
+
+    cd /opt/mcp-fc && git pull && npm ci && npm run build && sudo systemctl restart mcp-fc
 
 ## Configure
 
