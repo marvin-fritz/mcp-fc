@@ -17,6 +17,17 @@ search_securities · get_security_snapshot · screen_stocks · get_price_history
 get_financials · get_insider_trades · search_funds · get_fund_holdings ·
 get_political_trades · get_macro_series · search_news
 
+## Auth
+
+Two parallel mechanisms on `POST /mcp`:
+
+- **API keys** (`MCP_API_KEYS`) — for Claude Code, curl, n8n: `Authorization: Bearer <key>`.
+- **OAuth 2.1** (enabled when `MCP_JWT_SECRET` is set) — for claude.ai custom
+  connectors (web/desktop/mobile). Login uses finanz-copilot accounts
+  (`financecentre.users`, read-only); role `admin` → scopes `read write`,
+  `member` → `read`. JWT access tokens (1 h), rotating refresh tokens (30 d),
+  PKCE + dynamic client registration. OAuth data lives in the `mcp-fc` database.
+
 ## Adding a feature
 
 1. Create `src/features/<name>/index.ts` exporting a `FeatureModule`.
