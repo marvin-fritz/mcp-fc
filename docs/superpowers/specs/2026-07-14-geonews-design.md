@@ -21,7 +21,8 @@ arbeitet über den MCP-Server: holt unverortete News, bestimmt Land/Ort selbst
   country: "DE",                // ISO 3166-1 alpha-2 (uppercase)
   place: "Frankfurt am Main",   // optional (bei precision=country leer)
   precision: "city",            // country | region | city
-  confidence: 0.9,              // 0–1
+  confidence: 0.9,              // 0–1, Sicherheit der VERORTUNG
+  relevance: 0.72,              // 0–1, Bedeutung des EREIGNISSES (Pflicht bei Verortung)
   summary: "…",                 // optional, 1–2 Sätze für den Pin-Callout (max 300 Zeichen)
   // denormalisiert aus news (App liest für die Karte nur newsGeo):
   title, sourceName, link, image, pubDate, category,
@@ -34,8 +35,16 @@ arbeitet über den MCP-Server: holt unverortete News, bestimmt Land/Ort selbst
 Bei `locatable: false` fehlen location/country/place/precision/confidence/summary;
 die denormalisierten Felder und Meta sind trotzdem gesetzt.
 
+**relevance-Skala** (Ankerpunkte, damit der Agent über Läufe hinweg konsistent
+bleibt — stehen in der Tool-Beschreibung): 0.95–1.0 historischer Schock (9/11,
+Kriegsausbruch, Marktcrash, Bankenkollaps); 0.8–0.94 groß (Notenbank-Überraschung,
+Kriegseskalation, Mega-Merger); 0.6–0.79 bedeutend (erwarteter Zinsentscheid,
+Large-Cap-Zahlen, nationale Wahl); 0.4–0.59 mittel; 0.2–0.39 Routine;
+0–0.19 trivial. Die App skaliert damit Pin-Größe/Farbe und filtert bei Zoom-out.
+
 Indexe (via `scripts/ensure-indexes.ts`): `{newsId:1}` unique,
-`{location:'2dsphere'}` sparse, `{pubDate:-1}`, `{country:1, pubDate:-1}`.
+`{location:'2dsphere'}` sparse, `{pubDate:-1}`, `{country:1, pubDate:-1}`,
+`{relevance:-1, pubDate:-1}` (Top-Stories).
 Viewport-Queries der App: `$geoWithin`/`$box` auf `location`; Swift:
 `CLLocationCoordinate2D(latitude: coordinates[1], longitude: coordinates[0])`.
 
@@ -54,8 +63,8 @@ Zeitfenster verschieben kann.
 ### `submit_news_locations` (Scope `write` — erstes Write-Tool)
 
 Input: `items` (Array, 1–100), je Eintrag entweder Verortung
-(`newsId`, `lat`, `lon`, `country`, `precision`, optional `place`, `confidence`,
-`summary`) oder `{ newsId, noLocation: true }`.
+(`newsId`, `lat`, `lon`, `country`, `precision`, `relevance`; optional `place`,
+`confidence`, `summary`) oder `{ newsId, noLocation: true }`.
 
 Verhalten:
 - Batch-Lookup der news-Dokumente (`$in`), Denormalisierung serverseitig

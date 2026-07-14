@@ -18,7 +18,15 @@ const locationItem = z.object({
   country: z.string().regex(/^[A-Za-z]{2}$/).optional().describe('ISO 3166-1 alpha-2, e.g. DE'),
   place: z.string().max(120).optional().describe('display name, e.g. "Frankfurt am Main"'),
   precision: z.enum(['country', 'region', 'city']).optional(),
-  confidence: z.number().min(0).max(1).optional(),
+  confidence: z.number().min(0).max(1).optional().describe('how sure you are about the LOCATION (not the importance)'),
+  relevance: z
+    .number()
+    .min(0)
+    .max(1)
+    .optional()
+    .describe(
+      'how significant the EVENT is, 0-1 (required unless noLocation). Anchors: 0.95-1.0 = historic shock (9/11, war outbreak, market crash, systemic bank failure); 0.8-0.94 = major (central-bank surprise, war escalation, mega-merger, big-tech collapse); 0.6-0.79 = notable (rate decision as expected, large-cap earnings, national election); 0.4-0.59 = moderate (mid-cap news, sector reports); 0.2-0.39 = routine (small-cap PR, analyst notes); 0-0.19 = trivial/irrelevant',
+    ),
   summary: z.string().max(300).optional().describe('1-2 sentences for the map pin callout'),
 });
 
@@ -82,7 +90,7 @@ export const geonewsFeature: FeatureModule = {
       name: 'submit_news_locations',
       title: 'Submit news geolocations',
       description:
-        'Store geolocations for news (writes to newsGeo, one location per news, upsert by newsId). Each item: either lat/lon/country(ISO2)/precision(+optional place, confidence 0-1, summary ≤300 chars for the map pin) or {"newsId":"…","noLocation":true} for news without a meaningful location. Invalid items are skipped and reported. Example: {"items":[{"newsId":"665f0c…","lat":50.11,"lon":8.68,"country":"DE","place":"Frankfurt","precision":"city"}]}',
+        'Store geolocations for news (writes to newsGeo, one location per news, upsert by newsId). Each item: either a location (lat, lon, country ISO2, precision, relevance — plus optional place, confidence, summary ≤300 chars for the map pin) or {"newsId":"…","noLocation":true} for news without a meaningful location. relevance (0-1) drives pin size/filtering on the map: 1.0 = historic shock, 0.7 = major event, 0.3 = routine, <0.1 = trivial. Invalid items are skipped and reported. Example: {"items":[{"newsId":"665f0c…","lat":50.11,"lon":8.68,"country":"DE","place":"Frankfurt","precision":"city","relevance":0.7,"summary":"EZB hebt Zinsen an."}]}',
       inputSchema: {
         items: z.array(locationItem).min(1).max(100),
       },
@@ -124,8 +132,8 @@ export const geonewsFeature: FeatureModule = {
           if (item.noLocation) {
             doc = { ...base, locatable: false };
           } else {
-            if (item.lat == null || item.lon == null || !item.country || !item.precision) {
-              errors.push(`ERROR item ${i}: lat, lon, country and precision are required (or set noLocation)`);
+            if (item.lat == null || item.lon == null || !item.country || !item.precision || item.relevance == null) {
+              errors.push(`ERROR item ${i}: lat, lon, country, precision and relevance are required (or set noLocation)`);
               continue;
             }
             doc = {
@@ -135,6 +143,7 @@ export const geonewsFeature: FeatureModule = {
               country: item.country.toUpperCase(),
               ...(item.place ? { place: item.place } : {}),
               precision: item.precision,
+              relevance: item.relevance,
               ...(item.confidence != null ? { confidence: item.confidence } : {}),
               ...(item.summary ? { summary: item.summary } : {}),
             };

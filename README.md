@@ -34,11 +34,17 @@ Two parallel mechanisms on `POST /mcp`:
 
 `newsGeo` stores one location per news (GeoJSON Point, `[lon, lat]`, WGS84 —
 MapKit: `CLLocationCoordinate2D(latitude: c[1], longitude: c[0])`) plus
-denormalized news fields (title, sourceName, link, image, pubDate, category)
-and optional pin `summary`. Agent loop: `get_news_for_geocoding` (read) →
-locate → `submit_news_locations` (**write scope**). Not-locatable news are
-stored as `locatable: false` markers. The app queries `newsGeo` directly
-(`location` has a 2dsphere index for viewport queries).
+denormalized news fields (title, sourceName, link, image, pubDate, category),
+a `relevance` score and an optional pin `summary`. Agent loop:
+`get_news_for_geocoding` (read) → locate + score → `submit_news_locations`
+(**write scope**). Not-locatable news are stored as `locatable: false` markers.
+
+`relevance` (0–1, required for located items) rates the event's significance —
+0.95+ historic shock (9/11, market crash), 0.8+ major (central-bank surprise,
+war escalation), 0.6+ notable, 0.3 routine, <0.1 trivial. The app scales pin
+size/color with it and raises the threshold when zoomed out; indexes
+`{location:2dsphere}` and `{relevance:-1, pubDate:-1}` back both query shapes.
+REST integration: [docs/geonews-restapi-integration.md](docs/geonews-restapi-integration.md).
 
 ## Adding a feature
 
