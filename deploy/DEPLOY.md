@@ -31,10 +31,16 @@ scopes: `read`, later `write`).
     sudo systemctl enable --now mcp-fc
     curl -s localhost:8814/healthz   # → {"ok":true,"db":"up"}
 
-## Reverse proxy
+## Reverse proxy (nginx)
 
-Expose only `POST /mcp` and optionally `GET /healthz` via HTTPS. The server is
-stateless — you can run several instances behind the proxy for scale-out.
+Ready-made vhost: `deploy/nginx-mcp.finanz-copilot.de.conf` — exposes only
+`POST /mcp` and `GET /healthz`. The server is stateless — you can run several
+instances behind the proxy for scale-out.
+
+    sudo cp deploy/nginx-mcp.finanz-copilot.de.conf /etc/nginx/sites-available/mcp.finanz-copilot.de
+    sudo ln -s /etc/nginx/sites-available/mcp.finanz-copilot.de /etc/nginx/sites-enabled/
+    sudo nginx -t && sudo systemctl reload nginx
+    sudo certbot --nginx -d mcp.finanz-copilot.de   # needs the DNS A record first
 
 ## Agent configuration
 
