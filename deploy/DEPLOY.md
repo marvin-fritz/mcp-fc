@@ -20,6 +20,21 @@ Create `/opt/mcp-fc/.env` from `.env.example`. Generate keys with:
 Entry format: `MCP_API_KEYS=<name>:<key>=read` (comma-separated for multiple agents;
 scopes: `read`, later `write`).
 
+For claude.ai connector support additionally set in `.env`:
+
+    MCP_PUBLIC_URL=https://mcp.finanz-copilot.de
+    MCP_JWT_SECRET=$(openssl rand -hex 32)
+
+Then update the nginx vhost (adds /.well-known, /authorize, /oauth/login,
+/token, /register, /revoke) and restart:
+
+    sudo cp deploy/nginx-mcp.finanz-copilot.de.conf /etc/nginx/sites-available/mcp.finanz-copilot.de
+    sudo nginx -t && sudo systemctl reload nginx
+    sudo systemctl restart mcp-fc
+
+claude.ai → Settings → Connectors → Add custom connector →
+`https://mcp.finanz-copilot.de/mcp` → sign in with a finanz-copilot account.
+
 ## One-time DB preparation
 
     npm run ensure-indexes   # creates the news full-text index
