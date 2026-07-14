@@ -25,6 +25,10 @@ describe('get_financials', () => {
     expect(out).toContain('## cashflow');
     expect(out).toMatch(/\nrevenue\|\d/);
     expect(out).toMatch(/\ngrossMargin\|[\d.]+%/);
+    // eps is per-share, must not be scaled to millions (would render as 0)
+    const eps = out.split('\n').find((l) => l.startsWith('epsBasic|'));
+    expect(eps).toBeDefined();
+    expect(eps!.split('|')[1]).not.toBe('0');
   });
 
   it('respects statements + periods params', async () => {

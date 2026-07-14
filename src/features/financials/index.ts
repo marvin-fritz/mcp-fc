@@ -2,12 +2,14 @@ import { z } from 'zod';
 import { MAX_TIME_MS } from '../../db/client.js';
 import { cols } from '../../db/collections.js';
 import { resolveSecurity } from '../../db/identifiers.js';
-import { fmtMillions, fmtPct, toNum } from '../../format/num.js';
+import { fmtMillions, fmtNum, fmtPct, toNum } from '../../format/num.js';
 import { ToolError, type FeatureModule } from '../types.js';
 
 const STMT_KEYS = { income: 'incomeStatement', balance: 'balanceSheet', cashflow: 'cashFlow' } as const;
 type StmtName = keyof typeof STMT_KEYS;
 const RATIO_KEYS = new Set(['grossMargin', 'operatingMargin', 'netMargin', 'roe', 'roa']);
+// per-share items stay in raw currency units, not millions
+const isPerShare = (k: string) => k.startsWith('eps') || k.toLowerCase().includes('pershare');
 
 export const financialsFeature: FeatureModule = {
   name: 'financials',
@@ -70,7 +72,9 @@ export const financialsFeature: FeatureModule = {
             const values = periodDocs.map((d) => {
               const v = (d[key] ?? {})[item];
               if (toNum(v) === null) return '';
-              return RATIO_KEYS.has(item) ? fmtPct(v) : fmtMillions(v);
+              if (RATIO_KEYS.has(item)) return fmtPct(v);
+              if (isPerShare(item)) return fmtNum(v, 2);
+              return fmtMillions(v);
             });
             if (values.every((v) => v === '')) continue;
             rows.push([item, ...values].join('|'));
