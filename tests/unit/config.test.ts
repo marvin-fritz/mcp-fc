@@ -32,3 +32,24 @@ describe('loadConfig', () => {
     expect(loadConfig({ MCP_AUTH_DISABLED: 'true' }).authDisabled).toBe(true);
   });
 });
+
+describe('loadConfig oauth fields', () => {
+  it('defaults publicUrl to localhost:port, jwtSecret to null, authDb to mcp-fc', () => {
+    const c = loadConfig({ MCP_AUTH_DISABLED: 'true', MCP_PORT: '9000' });
+    expect(c.publicUrl).toBe('http://localhost:9000');
+    expect(c.jwtSecret).toBeNull();
+    expect(c.mongoAuthDb).toBe('mcp-fc');
+  });
+
+  it('reads MCP_PUBLIC_URL, MCP_JWT_SECRET, MONGODB_AUTH_DB', () => {
+    const c = loadConfig({
+      MCP_AUTH_DISABLED: 'true',
+      MCP_PUBLIC_URL: 'https://mcp.example.com',
+      MCP_JWT_SECRET: 'sekrit',
+      MONGODB_AUTH_DB: 'authdb',
+    });
+    expect(c.publicUrl).toBe('https://mcp.example.com');
+    expect(c.jwtSecret).toBe('sekrit');
+    expect(c.mongoAuthDb).toBe('authdb');
+  });
+});

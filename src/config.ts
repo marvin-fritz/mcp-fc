@@ -13,6 +13,12 @@ export interface Config {
   authDisabled: boolean;
   logLevel: string;
   apiKeys: ApiKeyDef[];
+  /** Public issuer URL (OAuth), e.g. https://mcp.finanz-copilot.de */
+  publicUrl: string;
+  /** Enables OAuth endpoints when set. */
+  jwtSecret: string | null;
+  /** MongoDB database for OAuth artifacts (clients/codes/refresh tokens). */
+  mongoAuthDb: string;
 }
 
 const VALID_SCOPES: ReadonlySet<string> = new Set(['read', 'write']);
@@ -39,12 +45,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (!authDisabled && apiKeys.length === 0) {
     throw new Error('MCP_API_KEYS is required unless MCP_AUTH_DISABLED=true');
   }
+  const port = Number(env.MCP_PORT ?? 8814);
   return {
-    port: Number(env.MCP_PORT ?? 8814),
+    port,
     mongoUri: env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017',
     mongoDb: env.MONGODB_DB ?? 'financecentre',
     authDisabled,
     logLevel: env.LOG_LEVEL ?? 'info',
     apiKeys,
+    publicUrl: (env.MCP_PUBLIC_URL ?? `http://localhost:${port}`).replace(/\/$/, ''),
+    jwtSecret: env.MCP_JWT_SECRET || null,
+    mongoAuthDb: env.MONGODB_AUTH_DB ?? 'mcp-fc',
   };
 }
