@@ -45,6 +45,11 @@ describe('HTTP server', () => {
     expect(res.status).toBe(405);
   });
 
+  it('has no OAuth endpoints when MCP_JWT_SECRET is unset', async () => {
+    const res = await fetch(`${baseUrl}/.well-known/oauth-authorization-server`);
+    expect(res.status).toBe(404);
+  });
+
   it('completes an MCP handshake with a valid key', async () => {
     const transport = new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`), {
       requestInit: { headers: { authorization: 'Bearer testkey123' } },
