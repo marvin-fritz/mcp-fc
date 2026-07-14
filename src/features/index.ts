@@ -1,6 +1,7 @@
 import type { FeatureModule } from './types.js';
 import { securitiesFeature } from './securities/index.js';
 import { pricesFeature } from './prices/index.js';
+import { financialsFeature } from './financials/index.js';
 
 /** All registered feature modules. Add new features here. */
-export const allFeatures: FeatureModule[] = [securitiesFeature, pricesFeature];
+export const allFeatures: FeatureModule[] = [securitiesFeature, pricesFeature, financialsFeature];
