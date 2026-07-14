@@ -13,7 +13,7 @@ const TEST_EMAIL = 'test.oauth@mcp-fc.local';
 const TEST_PW = 's3cret-test-pw';
 const LOCKED_EMAIL = 'locked.oauth@mcp-fc.local';
 const REDIRECT = 'http://127.0.0.1:59999/callback';
-const AUTH_DB = 'mcp-fc-test';
+const AUTH_DB = 'mcp-fc-test-flow';
 
 const verifier = randomBytes(32).toString('hex');
 const challenge = createHash('sha256').update(verifier).digest('base64url');

@@ -9,7 +9,7 @@ let store: AuthStore;
 
 beforeAll(async () => {
   const config = loadConfig({ ...process.env, MCP_AUTH_DISABLED: 'true' });
-  db = (await connectMongo(config)).db('mcp-fc-test');
+  db = (await connectMongo(config)).db('mcp-fc-test-store');
   store = new AuthStore(db);
   await store.ensureIndexes();
 });
