@@ -1,0 +1,19 @@
+[Unit]
+Description=mcp-fc MCP server (financecentre)
+After=network.target mongod.service
+
+[Service]
+Type=simple
+User=mcp-fc
+WorkingDirectory=/opt/mcp-fc
+EnvironmentFile=/opt/mcp-fc/.env
+ExecStart=/usr/bin/node /opt/mcp-fc/dist/server.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=
+
+[Install]
+WantedBy=multi-user.target
