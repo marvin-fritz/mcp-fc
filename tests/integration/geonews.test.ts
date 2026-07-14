@@ -68,8 +68,8 @@ describe('submit_news_locations', () => {
       name: 'submit_news_locations',
       arguments: {
         items: [
-          { newsId: String(newsIds[0]), lat: 50.1109, lon: 8.6821, country: 'de', place: 'Frankfurt am Main', precision: 'city', confidence: 0.9, summary: 'EZB-Entscheid.' },
-          { newsId: String(newsIds[1]), lat: 40.7128, lon: -74.006, country: 'US', place: 'New York', precision: 'city' },
+          { newsId: String(newsIds[0]), lat: 50.1109, lon: 8.6821, country: 'de', place: 'Frankfurt am Main', precision: 'city', confidence: 0.9, relevance: 0.72, summary: 'EZB-Entscheid.' },
+          { newsId: String(newsIds[1]), lat: 40.7128, lon: -74.006, country: 'US', place: 'New York', precision: 'city', relevance: 0.95 },
           { newsId: String(newsIds[2]), noLocation: true },
         ],
       },
@@ -83,10 +83,27 @@ describe('submit_news_locations', () => {
     expect(doc.locatable).toBe(true);
     expect(doc.locatedBy).toBe('test');
     expect(doc.summary).toBe('EZB-Entscheid.');
+    expect(doc.relevance).toBe(0.72);
     const marker: any = await db.collection('newsGeo').findOne({ newsId: newsIds[2] });
     expect(marker.locatable).toBe(false);
     expect(marker.location).toBeUndefined();
+    expect(marker.relevance).toBeUndefined();
     expect(marker.title).toContain('Test News 3');
+  });
+
+  it('requires relevance for located items and rejects out-of-range values', async () => {
+    const missing: any = await h.client.callTool({
+      name: 'submit_news_locations',
+      arguments: { items: [{ newsId: String(newsIds[0]), lat: 1, lon: 1, country: 'FR', precision: 'city' }] },
+    });
+    expect(text(missing)).toContain('ok: 0 located, 0 noLocation (0 updated)');
+    expect(text(missing)).toMatch(/ERROR item 0:.*relevance/);
+
+    const outOfRange: any = await h.client.callTool({
+      name: 'submit_news_locations',
+      arguments: { items: [{ newsId: String(newsIds[0]), lat: 1, lon: 1, country: 'FR', precision: 'city', relevance: 1.5 }] },
+    });
+    expect(outOfRange.isError).toBe(true);
   });
 
   it('fetch afterwards returns 0 rows for the test category', async () => {
@@ -97,11 +114,12 @@ describe('submit_news_locations', () => {
   it('re-submit updates idempotently', async () => {
     const res: any = await h.client.callTool({
       name: 'submit_news_locations',
-      arguments: { items: [{ newsId: String(newsIds[0]), lat: 48.1351, lon: 11.582, country: 'DE', place: 'München', precision: 'city' }] },
+      arguments: { items: [{ newsId: String(newsIds[0]), lat: 48.1351, lon: 11.582, country: 'DE', place: 'München', precision: 'city', relevance: 0.4 }] },
     });
     expect(text(res)).toContain('ok: 1 located, 0 noLocation (1 updated)');
     const doc: any = await db.collection('newsGeo').findOne({ newsId: newsIds[0] });
     expect(doc.place).toBe('München');
+    expect(doc.relevance).toBe(0.4);
   });
 
   it('skips invalid items but writes valid ones', async () => {
@@ -110,8 +128,8 @@ describe('submit_news_locations', () => {
       name: 'submit_news_locations',
       arguments: {
         items: [
-          { newsId: unknownId, lat: 1, lon: 1, country: 'FR', precision: 'city' },
-          { newsId: String(newsIds[1]), lat: 51.5074, lon: -0.1278, country: 'GB', precision: 'city' },
+          { newsId: unknownId, lat: 1, lon: 1, country: 'FR', precision: 'city', relevance: 0.5 },
+          { newsId: String(newsIds[1]), lat: 51.5074, lon: -0.1278, country: 'GB', precision: 'city', relevance: 0.6 },
           { newsId: String(newsIds[2]), lat: 2, lon: 2 },
         ],
       },
