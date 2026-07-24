@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "dev": "tsx src/server.ts",
     "test": "vitest run",
-    "ensure-indexes": "tsx scripts/ensure-indexes.ts"
+    "ensure-indexes": "tsx scripts/ensure-indexes.ts",
+    "backfill-news-relevance": "tsx scripts/backfill-news-relevance.ts"
   },
   "type": "module",
   "dependencies": {

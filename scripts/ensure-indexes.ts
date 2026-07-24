@@ -12,5 +12,12 @@ await geo.createIndex({ pubDate: -1 });
 await geo.createIndex({ country: 1, pubDate: -1 });
 // top-stories queries: highest relevance first, newest as tiebreaker
 await geo.createIndex({ relevance: -1, pubDate: -1 }, { name: 'relevance_pubDate' });
+console.log('creating news sort indexes…');
+const news = db.collection('news');
+// sortBy=relevance in der REST-API
+await news.createIndex({ relevance: -1, pubDate: -1 }, { name: 'relevance_pubDate' });
+// sortBy=views / sortBy=likes ("Meistgelesen")
+await news.createIndex({ 'stats.views': -1, pubDate: -1 }, { name: 'views_pubDate' });
+await news.createIndex({ 'stats.likes': -1, pubDate: -1 }, { name: 'likes_pubDate' });
 console.log('done');
 await closeMongo();
