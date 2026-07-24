@@ -6,6 +6,7 @@ import { cols } from '../../db/collections.js';
 import { fmtDate } from '../../format/num.js';
 import { table } from '../../format/table.js';
 import type { FeatureModule } from '../types.js';
+import { buildNewsPatch } from './newsPatch.js';
 
 /** Newest-N window scanned for unlocated news before the lookup filter. */
 const SCAN_WINDOW = 500;
@@ -111,6 +112,7 @@ export const geonewsFeature: FeatureModule = {
         let located = 0;
         let noLoc = 0;
         let updated = 0;
+        const newsOps: Array<{ updateOne: { filter: Document; update: Document } }> = [];
         for (const [i, item] of items.entries()) {
           const news = newsById.get(item.newsId.toLowerCase());
           if (!news) {
@@ -152,6 +154,22 @@ export const geonewsFeature: FeatureModule = {
           if (res.matchedCount > 0) updated++;
           if (item.noLocation) noLoc++;
           else located++;
+          newsOps.push({
+            updateOne: {
+              filter: { _id: news._id },
+              update: buildNewsPatch(item, base.locatedAt as Date),
+            },
+          });
+        }
+        // Denormalisierung nach news: macht sortBy=relevance in der REST-API
+        // zu einem Index-Scan. Ein Fehlschlag hier darf die bereits
+        // geschriebenen newsGeo-Dokumente nicht entwerten — deshalb nur melden.
+        if (newsOps.length > 0) {
+          try {
+            await c.news.bulkWrite(newsOps, { ordered: false });
+          } catch (err) {
+            errors.push(`ERROR news denormalization failed: ${String(err)}`);
+          }
         }
         log.info({ located, noLoc, updated, errors: errors.length, by: auth.keyName }, 'news locations submitted');
         return [`ok: ${located} located, ${noLoc} noLocation (${updated} updated)`, ...errors].join('\n');

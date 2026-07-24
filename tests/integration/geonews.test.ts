@@ -140,3 +140,45 @@ describe('submit_news_locations', () => {
     expect(out).toContain('ERROR item 2:');
   });
 });
+
+describe('submit_news_locations → news-Denormalisierung', () => {
+  it('schreibt relevance, geoSummary, country und place an den news-Doc', async () => {
+    await h.client.callTool({
+      name: 'submit_news_locations',
+      arguments: {
+        items: [{
+          newsId: String(newsIds[0]),
+          lat: 50.11,
+          lon: 8.68,
+          country: 'DE',
+          place: 'Frankfurt',
+          precision: 'city',
+          relevance: 0.82,
+          summary: 'Testzusammenfassung.',
+        }],
+      },
+    });
+    const doc = await db.collection('news').findOne({ _id: newsIds[0] });
+    expect(doc?.relevance).toBe(0.82);
+    expect(doc?.geoSummary).toBe('Testzusammenfassung.');
+    expect(doc?.country).toBe('DE');
+    expect(doc?.place).toBe('Frankfurt');
+    expect(doc?.geoLocatedAt).toBeInstanceOf(Date);
+  });
+
+  it('setzt bei noLocation nur geoLocatedAt, keine relevance', async () => {
+    // newsIds[2] statt newsIds[1]: newsIds[1] bekommt in einem früheren Test
+    // dieser Datei ("skips invalid items but writes valid ones") bereits eine
+    // relevance geschrieben — mit der Denormalisierung würde die Prüfung auf
+    // "keine relevance" sonst an Testreihenfolge-Verschmutzung scheitern statt
+    // am eigentlichen Verhalten. newsIds[2] wird nur mit noLocation oder mit
+    // ungültigen (übersprungenen) Items adressiert, bekommt also nie relevance.
+    await h.client.callTool({
+      name: 'submit_news_locations',
+      arguments: { items: [{ newsId: String(newsIds[2]), noLocation: true }] },
+    });
+    const doc = await db.collection('news').findOne({ _id: newsIds[2] });
+    expect(doc?.geoLocatedAt).toBeInstanceOf(Date);
+    expect(doc?.relevance).toBeUndefined();
+  });
+});
