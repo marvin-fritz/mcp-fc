@@ -199,7 +199,7 @@ describe('submit_news_locations → news-Denormalisierung', () => {
           place: 'Berlin',
           precision: 'city',
           relevance: 0.6,
-          title: 'Testschlagzeile für Geo-Agent',
+          headline: 'Testschlagzeile für Geo-Agent',
         }],
       },
     });

@@ -37,7 +37,7 @@ describe('buildNewsPatch', () => {
 
   it('überträgt geoTitle, wenn der Agent eine deutsche Schlagzeile liefert', () => {
     const patch = buildNewsPatch(
-      { relevance: 0.8, title: 'EZB hebt Leitzins auf 4,0 Prozent', country: 'DE' },
+      { relevance: 0.8, headline: 'EZB hebt Leitzins auf 4,0 Prozent', country: 'DE' },
       AT,
     );
     expect(patch.$set.geoTitle).toBe('EZB hebt Leitzins auf 4,0 Prozent');

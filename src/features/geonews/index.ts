@@ -29,12 +29,12 @@ const locationItem = z.object({
       'how significant the EVENT is, 0-1 (required unless noLocation). Anchors: 0.95-1.0 = historic shock (9/11, war outbreak, market crash, systemic bank failure); 0.8-0.94 = major (central-bank surprise, war escalation, mega-merger, big-tech collapse); 0.6-0.79 = notable (rate decision as expected, large-cap earnings, national election); 0.4-0.59 = moderate (mid-cap news, sector reports); 0.2-0.39 = routine (small-cap PR, analyst notes); 0-0.19 = trivial/irrelevant',
     ),
   summary: z.string().max(300).optional().describe('1-2 sentences for the map pin callout'),
-  title: z
+  headline: z
     .string()
     .max(90)
     .optional()
     .describe(
-      'kurze deutsche Schlagzeile (max 90 Zeichen), auch für fremdsprachige Quellen — wird in der App als Überschrift angezeigt. Keine Zusammenfassung, sondern eine Schlagzeile: aktiv, konkret, ohne Quellenangabe.',
+      'Schreibe hier selbst eine NEUE kurze deutsche Schlagzeile (max 90 Zeichen), auch für fremdsprachige Quellen — wird in der App als Überschrift angezeigt. NICHT den Original-Titel aus get_news_for_geocoding kopieren, sondern neu formulieren. Keine Zusammenfassung, sondern eine Schlagzeile: aktiv, konkret, ohne Quellenangabe.',
     ),
 });
 
@@ -98,7 +98,7 @@ export const geonewsFeature: FeatureModule = {
       name: 'submit_news_locations',
       title: 'Submit news geolocations',
       description:
-        'Store geolocations for news (writes to newsGeo, one location per news, upsert by newsId). Each item: either a location (lat, lon, country ISO2, precision, relevance — plus optional place, confidence, summary ≤300 chars for the map pin, title ≤90 chars: a short German headline, even for foreign-language sources — not a summary sentence, a headline) or {"newsId":"…","noLocation":true} for news without a meaningful location. relevance (0-1) drives pin size/filtering on the map: 1.0 = historic shock, 0.7 = major event, 0.3 = routine, <0.1 = trivial. Invalid items are skipped and reported. Example: {"items":[{"newsId":"665f0c…","lat":50.11,"lon":8.68,"country":"DE","place":"Frankfurt","precision":"city","relevance":0.7,"summary":"EZB hebt Zinsen an.","title":"EZB hebt Leitzins an"}]}',
+        'Store geolocations for news (writes to newsGeo, one location per news, upsert by newsId). Each item: either a location (lat, lon, country ISO2, precision, relevance — plus optional place, confidence, summary ≤300 chars for the map pin, headline ≤90 chars: a short German headline that YOU write yourself, even for foreign-language sources — do NOT copy the source title from get_news_for_geocoding, write a new one; active, concrete, no source attribution, not a summary sentence) or {"newsId":"…","noLocation":true} for news without a meaningful location. relevance (0-1) drives pin size/filtering on the map: 1.0 = historic shock, 0.7 = major event, 0.3 = routine, <0.1 = trivial. Invalid items are skipped and reported. Example: {"items":[{"newsId":"665f0c…","lat":50.11,"lon":8.68,"country":"DE","place":"Frankfurt","precision":"city","relevance":0.7,"summary":"EZB hebt Zinsen an.","headline":"EZB hebt Leitzins an"}]}',
       inputSchema: {
         items: z.array(locationItem).min(1).max(100),
       },
@@ -158,7 +158,7 @@ export const geonewsFeature: FeatureModule = {
               // eigenes Feld (nicht `title`): das newsGeo-Dokument hat bereits
               // ein `title` mit dem Original-Artikeltitel (aus news denormalisiert,
               // siehe `base` oben) — das würde sonst überschrieben.
-              ...(item.title ? { geoTitle: item.title } : {}),
+              ...(item.headline ? { geoTitle: item.headline } : {}),
             };
           }
           const res = await c.newsGeo.replaceOne({ newsId: news._id }, doc, { upsert: true });
