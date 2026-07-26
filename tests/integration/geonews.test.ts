@@ -181,4 +181,29 @@ describe('submit_news_locations → news-Denormalisierung', () => {
     expect(doc?.geoLocatedAt).toBeInstanceOf(Date);
     expect(doc?.relevance).toBeUndefined();
   });
+
+  it('schreibt geoTitle an den news-Doc, wenn der Agent eine Schlagzeile liefert', async () => {
+    // newsIds[2] hat in dieser Datei bislang nie einen erfolgreichen
+    // Located-Submit bekommen (nur noLocation-Markierungen und ein wegen
+    // fehlender Pflichtfelder übersprungenes Item) — sonst würde diese
+    // Prüfung Alt-Zustand aus einem früheren Test bestätigen statt das
+    // eigentliche Verhalten (dieselbe Falle wie bei newsIds[1] oben).
+    await h.client.callTool({
+      name: 'submit_news_locations',
+      arguments: {
+        items: [{
+          newsId: String(newsIds[2]),
+          lat: 52.52,
+          lon: 13.405,
+          country: 'DE',
+          place: 'Berlin',
+          precision: 'city',
+          relevance: 0.6,
+          title: 'Testschlagzeile für Geo-Agent',
+        }],
+      },
+    });
+    const doc = await db.collection('news').findOne({ _id: newsIds[2] });
+    expect(doc?.geoTitle).toBe('Testschlagzeile für Geo-Agent');
+  });
 });

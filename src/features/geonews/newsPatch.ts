@@ -4,6 +4,7 @@ export interface GeoPatchInput {
   noLocation?: boolean;
   relevance?: number;
   summary?: string;
+  title?: string;
   country?: string;
   place?: string;
 }
@@ -27,6 +28,7 @@ export function buildNewsPatch(
     $set: {
       relevance: item.relevance,
       geoSummary: item.summary ?? null,
+      geoTitle: item.title ?? null,
       country: item.country ? item.country.toUpperCase() : null,
       place: item.place ?? null,
       geoLocatedAt: locatedAt,

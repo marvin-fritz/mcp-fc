@@ -12,6 +12,7 @@ describe('buildNewsPatch', () => {
     expect(patch.$set).toEqual({
       relevance: 0.85,
       geoSummary: 'EZB hebt Zinsen an.',
+      geoTitle: null,
       country: 'DE',
       place: 'Frankfurt',
       geoLocatedAt: AT,
@@ -32,5 +33,17 @@ describe('buildNewsPatch', () => {
 
   it('normalisiert den Ländercode auf Großbuchstaben', () => {
     expect(buildNewsPatch({ relevance: 0.5, country: 'gb' }, AT).$set.country).toBe('GB');
+  });
+
+  it('überträgt geoTitle, wenn der Agent eine deutsche Schlagzeile liefert', () => {
+    const patch = buildNewsPatch(
+      { relevance: 0.8, title: 'EZB hebt Leitzins auf 4,0 Prozent', country: 'DE' },
+      AT,
+    );
+    expect(patch.$set.geoTitle).toBe('EZB hebt Leitzins auf 4,0 Prozent');
+  });
+
+  it('setzt geoTitle auf null, wenn keine Schlagzeile geliefert wurde', () => {
+    expect(buildNewsPatch({ relevance: 0.5, country: 'US' }, AT).$set.geoTitle).toBeNull();
   });
 });
