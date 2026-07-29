@@ -21,6 +21,7 @@ MCP-Tool `submit_news_locations`):
 | `confidence` | float? | 0–1 — Sicherheit der **Verortung** |
 | `relevance` | float | 0–1 — Bedeutung des **Ereignisses** (steuert Pin-Größe & Filter) |
 | `summary` | str? | 1–2 Sätze für den Pin-Callout (deutsch) |
+| `geoTitle` | str? | kurze deutsche **Schlagzeile** (≤ 90 Zeichen), vom Agenten neu formuliert — nicht der Originaltitel. Eingabefeld heißt agentenseitig `headline`. |
 | `title`, `sourceName`, `link`, `image`, `pubDate`, `category` | — | denormalisiert aus `news` — **kein Join nötig** |
 | `locatedBy`, `locatedAt` | — | Agent-Name + Zeitstempel |
 
@@ -42,6 +43,13 @@ weitere Vorbereitung über einen Index.
 
 Befüllung: täglich 8:00 Uhr durch den Geo-Agenten (Claude-Scheduled-Task) —
 die Daten sind **nicht** realtime; `locatedAt` zeigt die Aktualität.
+
+> **Achtung bei neuen Feldern:** Der Agent ist eine Scheduled-Task mit eigenem
+> Auftragstext, der außerhalb dieses Repos liegt. Ein Feld im Tool-Schema
+> anzulegen reicht **nicht** — zählt der Auftragstext die einzureichenden Felder
+> auf, füllt der Agent nur diese. Bei jeder Erweiterung von
+> `submit_news_locations` also auch die Routine anpassen, sonst bleibt das neue
+> Feld dauerhaft leer, ohne dass irgendetwas fehlschlägt.
 
 ## 2. Beanie-Model — `app/models/news_geo.py`
 
