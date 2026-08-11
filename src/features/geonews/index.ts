@@ -9,8 +9,6 @@ import type { FeatureModule } from '../types.js';
 import { buildEnrichment } from './enrichment.js';
 import { buildNewsPatch } from './newsPatch.js';
 
-/** Newest-N window scanned for unlocated news before the lookup filter. */
-const SCAN_WINDOW = 500;
 
 const locationItem = z.object({
   newsId: z.string().regex(/^[a-f0-9]{24}$/i).describe('news _id (24-char hex from get_news_for_geocoding)'),
@@ -54,7 +52,7 @@ export const geonewsFeature: FeatureModule = {
       name: 'get_news_for_geocoding',
       title: 'News pending geolocation',
       description:
-        'Newest news that have NO entry in newsGeo yet — for the geolocation agent. Returns newsId (use it in submit_news_locations), date, category, source, title, description (truncated). Example: {"limit":20}',
+        'Newest news that have NO enrichment block yet — for the geolocation agent. Returns newsId (use it in submit_news_locations), date, category, source, title, description (truncated). Example: {"limit":20}',
       inputSchema: {
         limit: z.number().int().min(1).max(50).optional().describe('default 20'),
         from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -65,7 +63,7 @@ export const geonewsFeature: FeatureModule = {
       annotations: { readOnlyHint: true },
       handler: async (input, { db }) => {
         const lim = Math.min(input.limit ?? 20, 50);
-        const match: Record<string, unknown> = {};
+        const match: Record<string, unknown> = { enrichment: { $exists: false } };
         if (input.from || input.to) {
           match.pubDate = {
             ...(input.from ? { $gte: new Date(`${input.from}T00:00:00Z`) } : {}),
@@ -74,21 +72,15 @@ export const geonewsFeature: FeatureModule = {
         }
         if (input.category) match.category = input.category.toUpperCase();
         const docs = await cols(db)
-          .news.aggregate(
-            [
-              { $match: match },
-              { $sort: { pubDate: -1 } },
-              { $limit: SCAN_WINDOW },
-              { $lookup: { from: 'newsGeo', localField: '_id', foreignField: 'newsId', as: 'geo' } },
-              { $match: { geo: { $size: 0 } } },
-              { $project: { title: 1, description: 1, sourceName: 1, category: 1, pubDate: 1 } },
-              { $limit: lim + 1 },
-            ],
-            { maxTimeMS: MAX_TIME_MS },
-          )
+          .news.find(match, {
+            projection: { title: 1, description: 1, sourceName: 1, category: 1, pubDate: 1 },
+            sort: { pubDate: -1 },
+            limit: lim + 1,
+            maxTimeMS: MAX_TIME_MS,
+          })
           .toArray();
         const hasMore = docs.length > lim;
-        const body = table(
+        return table(
           ['newsId', 'date', 'category', 'source', 'title', 'description'],
           docs.slice(0, lim).map((d) => [
             String(d._id),
@@ -100,7 +92,6 @@ export const geonewsFeature: FeatureModule = {
           ]),
           { hasMore },
         );
-        return `# newest ${SCAN_WINDOW} news scanned in range — shift from/to if 0 rows remain\n${body}`;
       },
     },
     {
