@@ -49,7 +49,7 @@ die Daten sind **nicht** realtime; `locatedAt` zeigt die Aktualität.
 > anzulegen reicht **nicht** — zählt der Auftragstext die einzureichenden Felder
 > auf, füllt der Agent nur diese. Bei jeder Erweiterung von
 > `submit_news_locations` also auch die Routine anpassen, sonst bleibt das neue
-> Feld dauerhaft leer, ohne dass irgendetwas fehlschlägt.
+> Feld dauerhaft leer, ohne dass irgendetwas fehlschlägt. Der aktuelle Auftragstext liegt als Kopiervorlage in docs/geonews-agent-routine.md.
 
 ## 2. Beanie-Model — `app/models/news_geo.py`
 
