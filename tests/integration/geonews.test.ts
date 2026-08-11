@@ -207,3 +207,74 @@ describe('submit_news_locations → news-Denormalisierung', () => {
     expect(doc?.geoTitle).toBe('Testschlagzeile für Geo-Agent');
   });
 });
+
+describe('submit_news_locations → enrichment-Block', () => {
+  it('schreibt den vollen enrichment-Block inkl. topics an den news-Doc', async () => {
+    await h.client.callTool({
+      name: 'submit_news_locations',
+      arguments: {
+        items: [{
+          newsId: String(newsIds[0]),
+          lat: 50.11, lon: 8.68, country: 'de', place: 'Frankfurt', precision: 'city',
+          confidence: 0.9, relevance: 0.77, summary: 'EZB-Entscheid.',
+          headline: 'EZB hebt Leitzins an', topics: ['ECB', 'Interest Rates'],
+        }],
+      },
+    });
+    const doc: any = await db.collection('news').findOne({ _id: newsIds[0] });
+    expect(doc.enrichment.enrichedBy).toBe('test');
+    expect(doc.enrichment.enrichedAt).toBeInstanceOf(Date);
+    expect(doc.enrichment.relevance).toBe(0.77);
+    expect(doc.enrichment.headline).toBe('EZB hebt Leitzins an');
+    expect(doc.enrichment.topics).toEqual(['ECB', 'Interest Rates']);
+    expect(doc.enrichment.geo).toEqual({
+      locatable: true,
+      location: { type: 'Point', coordinates: [8.68, 50.11] },
+      country: 'DE',
+      place: 'Frankfurt',
+      precision: 'city',
+      confidence: 0.9,
+    });
+    // Dual-Write bleibt intakt:
+    expect(doc.relevance).toBe(0.77);
+    const geoDoc: any = await db.collection('newsGeo').findOne({ newsId: newsIds[0] });
+    expect(geoDoc.relevance).toBe(0.77);
+  });
+
+  it('noLocation-Items dürfen topics und relevance mitliefern — nur im Block, nicht top-level', async () => {
+    await h.client.callTool({
+      name: 'submit_news_locations',
+      arguments: {
+        items: [{
+          newsId: String(newsIds[1]),
+          noLocation: true,
+          relevance: 0.55,
+          topics: ['US Economy', 'US Job Market', 'DAX'],
+          headline: 'US-Jobdaten verunsichern Anleger',
+        }],
+      },
+    });
+    const doc: any = await db.collection('news').findOne({ _id: newsIds[1] });
+    expect(doc.enrichment.geo).toEqual({ locatable: false });
+    expect(doc.enrichment.relevance).toBe(0.55);
+    expect(doc.enrichment.topics).toEqual(['US Economy', 'US Job Market', 'DAX']);
+    expect(doc.enrichment.headline).toBe('US-Jobdaten verunsichern Anleger');
+    // Top-Level-Denormalisierung bei noLocation unverändert: nur geoLocatedAt.
+    // (newsIds[1] hat aus früheren Tests bereits relevance 0.6 top-level —
+    // die darf durch den noLocation-Submit nicht überschrieben werden.)
+    expect(doc.relevance).toBe(0.6);
+  });
+
+  it('lehnt mehr als 5 topics ab', async () => {
+    const res: any = await h.client.callTool({
+      name: 'submit_news_locations',
+      arguments: {
+        items: [{
+          newsId: String(newsIds[0]), noLocation: true,
+          topics: ['A1', 'B2', 'C3', 'D4', 'E5', 'F6'],
+        }],
+      },
+    });
+    expect(res.isError).toBe(true);
+  });
+});

@@ -6,6 +6,7 @@ import { cols } from '../../db/collections.js';
 import { fmtDate } from '../../format/num.js';
 import { table } from '../../format/table.js';
 import type { FeatureModule } from '../types.js';
+import { buildEnrichment } from './enrichment.js';
 import { buildNewsPatch } from './newsPatch.js';
 
 /** Newest-N window scanned for unlocated news before the lookup filter. */
@@ -26,15 +27,23 @@ const locationItem = z.object({
     .max(1)
     .optional()
     .describe(
-      'how significant the EVENT is, 0-1 (required unless noLocation). Anchors: 0.95-1.0 = historic shock (9/11, war outbreak, market crash, systemic bank failure); 0.8-0.94 = major (central-bank surprise, war escalation, mega-merger, big-tech collapse); 0.6-0.79 = notable (rate decision as expected, large-cap earnings, national election); 0.4-0.59 = moderate (mid-cap news, sector reports); 0.2-0.39 = routine (small-cap PR, analyst notes); 0-0.19 = trivial/irrelevant',
+      'how significant the EVENT is, 0-1 (required unless noLocation). Anchors: 0.95-1.0 = historic shock (9/11, war outbreak, market crash, systemic bank failure); 0.8-0.94 = major (central-bank surprise, war escalation, mega-merger, big-tech collapse); 0.6-0.79 = notable (rate decision as expected, large-cap earnings, national election); 0.4-0.59 = moderate (mid-cap news, sector reports); 0.2-0.39 = routine (small-cap PR, analyst notes); 0-0.19 = trivial/irrelevant. Auch bei noLocation sinnvoll und erwünscht.',
     ),
-  summary: z.string().max(300).optional().describe('1-2 sentences for the map pin callout'),
+  summary: z.string().max(300).optional().describe('1-2 sentences for the map pin callout. Auch bei noLocation sinnvoll und erwünscht.'),
   headline: z
     .string()
     .max(90)
     .optional()
     .describe(
-      'Schreibe hier selbst eine NEUE kurze deutsche Schlagzeile (max 90 Zeichen), auch für fremdsprachige Quellen — wird in der App als Überschrift angezeigt. NICHT den Original-Titel aus get_news_for_geocoding kopieren, sondern neu formulieren. Keine Zusammenfassung, sondern eine Schlagzeile: aktiv, konkret, ohne Quellenangabe.',
+      'Schreibe hier selbst eine NEUE kurze deutsche Schlagzeile (max 90 Zeichen), auch für fremdsprachige Quellen — wird in der App als Überschrift angezeigt. NICHT den Original-Titel aus get_news_for_geocoding kopieren, sondern neu formulieren. Keine Zusammenfassung, sondern eine Schlagzeile: aktiv, konkret, ohne Quellenangabe. Auch bei noLocation sinnvoll und erwünscht.',
+    ),
+  topics: z
+    .array(z.string().min(2).max(60))
+    .min(1)
+    .max(5)
+    .optional()
+    .describe(
+      '1-5 Themen-Tags: Englisch, Title Case — z.B. ["US Economy","US Job Market","DAX"]. Kategorien: Indizes (DAX, S&P 500), Länder-/Regionen-Themen (US Economy, Eurozone Economy), Märkte/Assetklassen (Oil, Gold, Bonds, Crypto), Institutionen (ECB, Fed), Themenfelder (Interest Rates, Inflation, Tariffs), Einzelwerte als Firmenname (Apple, Siemens). WICHTIG: Trägt die News ein spezifisches Thema, vergib es zusätzlich konkret (z.B. Private Credit, Credit Defaults, CRE Debt, Yen Carry Trade, AI Capex) — die Tags werden als Zeitreihe für Trend-Früherkennung aggregiert. Dasselbe Thema deshalb immer mit exakt demselben Tag, keine neuen Formulierungen für bekannte Themen. Keine Sätze, keine Duplikate, kein Kategorie-Echo (ECONOMY ist Kategorie, kein Topic). Auch bei noLocation angeben.',
     ),
 });
 
@@ -98,7 +107,7 @@ export const geonewsFeature: FeatureModule = {
       name: 'submit_news_locations',
       title: 'Submit news geolocations',
       description:
-        'Store geolocations for news (writes to newsGeo, one location per news, upsert by newsId). Each item: either a location (lat, lon, country ISO2, precision, relevance — plus optional place, confidence, summary ≤300 chars for the map pin, headline ≤90 chars: a short German headline that YOU write yourself, even for foreign-language sources — do NOT copy the source title from get_news_for_geocoding, write a new one; active, concrete, no source attribution, not a summary sentence) or {"newsId":"…","noLocation":true} for news without a meaningful location. relevance (0-1) drives pin size/filtering on the map: 1.0 = historic shock, 0.7 = major event, 0.3 = routine, <0.1 = trivial. Invalid items are skipped and reported. Example: {"items":[{"newsId":"665f0c…","lat":50.11,"lon":8.68,"country":"DE","place":"Frankfurt","precision":"city","relevance":0.7,"summary":"EZB hebt Zinsen an.","headline":"EZB hebt Leitzins an"}]}',
+        'Store geolocations for news (writes to newsGeo, one location per news, upsert by newsId). Each item: either a location (lat, lon, country ISO2, precision, relevance — plus optional place, confidence, summary ≤300 chars for the map pin, headline ≤90 chars: a short German headline that YOU write yourself, even for foreign-language sources — do NOT copy the source title from get_news_for_geocoding, write a new one; active, concrete, no source attribution, not a summary sentence) or {"newsId":"…","noLocation":true} for news without a meaningful location. relevance (0-1) drives pin size/filtering on the map: 1.0 = historic shock, 0.7 = major event, 0.3 = routine, <0.1 = trivial. Auch noLocation-Items sollen relevance, topics, headline und summary mitliefern — Themen und Wichtigkeit sind ortsunabhängig. Invalid items are skipped and reported. Example: {"items":[{"newsId":"665f0c…","lat":50.11,"lon":8.68,"country":"DE","place":"Frankfurt","precision":"city","relevance":0.7,"summary":"EZB hebt Zinsen an.","headline":"EZB hebt Leitzins an"}]}',
       inputSchema: {
         items: z.array(locationItem).min(1).max(100),
       },
@@ -168,7 +177,13 @@ export const geonewsFeature: FeatureModule = {
           newsOps.push({
             updateOne: {
               filter: { _id: news._id },
-              update: buildNewsPatch(item, base.locatedAt as Date),
+              update: {
+                $set: {
+                  // Top-Level-Denormalisierung: bleibt bis Phase 5 (webapi liest sie noch)
+                  ...buildNewsPatch(item, base.locatedAt as Date).$set,
+                  enrichment: buildEnrichment(item, auth.keyName, base.locatedAt as Date),
+                },
+              },
             },
           });
         }
