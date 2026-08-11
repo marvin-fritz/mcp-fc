@@ -66,6 +66,16 @@ des Tools und im Agenten-Auftragstext:
   `Gold`, `Crypto`, `Bonds`), Institutionen (`ECB`, `Fed`), Themenfelder
   (`Interest Rates`, `Inflation`, `US Job Market`, `Tariffs`), Einzelwerte als
   Firmenname (`Apple`, `Siemens`).
+- **Konkretheit für Trend-Erkennung:** Neben breiten Tags soll der Agent auch
+  spezifische Themen vergeben, wenn die News eines trägt — z.B.
+  `Private Credit`, `Credit Defaults`, `CRE Debt`, `Yen Carry Trade`,
+  `AI Capex`. Zielbild ist ein **Frühwarnsystem**: Topics werden später als
+  Zeitreihe aggregiert (Zählung pro Zeitfenster über den
+  `{topics, pubDate}`-Index), um aufkommende Themen und Häufungen (z.B.
+  „Private Credit" zusammen mit „Credit Defaults") früh zu erkennen. Dafür
+  zählt Wiedererkennbarkeit: dasselbe Thema immer mit exakt demselben Tag,
+  lieber ein etablierter spezifischer Begriff als jedes Mal eine neue
+  Formulierung.
 - Keine Sätze, keine Duplikate, kein Quellen-/Kategorie-Echo (`ECONOMY` ist
   Kategorie, kein Topic).
 
