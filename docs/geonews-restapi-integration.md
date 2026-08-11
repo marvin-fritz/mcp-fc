@@ -1,29 +1,38 @@
 # GeoNews → REST-API-Integration (webapi)
 
-Anleitung, um die vom MCP/Geo-Agenten befüllte Collection `financecentre.newsGeo`
-in der FastAPI-webapi (`api.finanz-copilot.de`) bereitzustellen — als Datenquelle
-für die MapKit-Karte in der App. Zugeschnitten auf die bestehende Struktur
-(Beanie-Models, Service-Layer, `app/api/v1/endpoints/`).
+Anleitung, um die vom MCP/Geo-Agenten befüllten `enrichment`-Daten der
+`news`-Collection in der FastAPI-webapi (`api.finanz-copilot.de`)
+bereitzustellen — als Datenquelle für die MapKit-Karte in der App.
+Zugeschnitten auf die bestehende Struktur (Beanie-Models, Service-Layer,
+`app/api/v1/endpoints/`).
 
-## 1. Datenmodell der Collection
+## 1. Datenmodell
 
-Ein Dokument pro verorteter Nachricht (Upsert per `newsId`, geschrieben vom
-MCP-Tool `submit_news_locations`):
+Quelle ist jetzt die `news`-Collection selbst. Der Geo-Agent schreibt einen
+`enrichment`-Block direkt an das news-Dokument (Upsert per `$set` durch das
+MCP-Tool `submit_news_locations`); `newsGeo` ist deprecated und wird nach der
+webapi-Umstellung gedroppt.
 
 | Feld | Typ | Bedeutung |
 |---|---|---|
-| `newsId` | ObjectId | Referenz auf `news._id` (unique) |
-| `locatable` | bool | `false` = News hat keinen sinnvollen Ort (**für die Karte filtern!**) |
-| `location` | GeoJSON Point | `{ type: "Point", coordinates: [lon, lat] }` — **Reihenfolge beachten** |
-| `country` | str | ISO 3166-1 alpha-2, uppercase (`DE`, `US`) |
-| `place` | str? | Anzeigename („Frankfurt am Main"), fehlt bei `precision=country` |
-| `precision` | str | `country` \| `region` \| `city` |
-| `confidence` | float? | 0–1 — Sicherheit der **Verortung** |
-| `relevance` | float | 0–1 — Bedeutung des **Ereignisses** (steuert Pin-Größe & Filter) |
-| `summary` | str? | 1–2 Sätze für den Pin-Callout (deutsch) |
-| `geoTitle` | str? | kurze deutsche **Schlagzeile** (≤ 90 Zeichen), vom Agenten neu formuliert — nicht der Originaltitel. Eingabefeld heißt agentenseitig `headline`. |
-| `title`, `sourceName`, `link`, `image`, `pubDate`, `category` | — | denormalisiert aus `news` — **kein Join nötig** |
-| `locatedBy`, `locatedAt` | — | Agent-Name + Zeitstempel |
+| `enrichment` | object? | fehlt = noch nicht vom Agenten bearbeitet |
+| `enrichment.enrichedBy` / `enrichedAt` | str / date | Agent-Name + Zeitstempel |
+| `enrichment.relevance` | float? | 0–1 — Bedeutung des EREIGNISSES (auch ohne Ort gesetzt) |
+| `enrichment.headline` | str? | kurze deutsche Schlagzeile (≤90 Zeichen, ehem. `geoTitle`) |
+| `enrichment.summary` | str? | 1–2 Sätze (Pin-Callout / Teaser) |
+| `enrichment.topics` | [str]? | 1–5 Themen-Tags, Englisch, Title Case (`"US Economy"`, `"DAX"`) |
+| `enrichment.geo.locatable` | bool | `false` = kein sinnvoller Ort (**für die Karte filtern!**) |
+| `enrichment.geo.location` | GeoJSON Point | `[lon, lat]` — Reihenfolge beachten |
+| `enrichment.geo.country` | str? | ISO 3166-1 alpha-2, uppercase |
+| `enrichment.geo.place` | str? | Anzeigename, fehlt bei `precision=country` |
+| `enrichment.geo.precision` | str? | `country` \| `region` \| `city` |
+| `enrichment.geo.confidence` | float? | 0–1 — Sicherheit der VERORTUNG |
+| `title`, `sourceName`, `link`, `image`, `pubDate`, `category` | — | native news-Felder — **keine Denormalisierung mehr nötig** |
+
+Übergangsphase: Die bisherigen Top-Level-Felder (`relevance`, `geoTitle`,
+`geoSummary`, `country`, `place`, `geoLocatedAt`) werden noch parallel
+geschrieben und erst entfernt, wenn die webapi vollständig auf
+`enrichment.*` liest.
 
 **relevance-Skala** (vom Agenten vergeben, feste Ankerpunkte):
 
@@ -36,13 +45,16 @@ MCP-Tool `submit_news_locations`):
 | 0.2–0.39 | Routine | Small-Cap-PR, Analystenkommentare |
 | 0–0.19 | trivial | irrelevantes Rauschen |
 
-Vorhandene Indizes (via mcp-fc `ensure-indexes` angelegt): `{newsId:1}` unique,
-`{location:'2dsphere'}` sparse, `{pubDate:-1}`, `{country:1,pubDate:-1}`,
-`{relevance:-1,pubDate:-1}`. Viewport- und Top-Stories-Queries laufen also ohne
-weitere Vorbereitung über einen Index.
+Indizes (via mcp-fc `ensure-indexes` / `scripts/ensure-indexes.ts` angelegt):
+`enrichment_location_2dsphere` auf `enrichment.geo.location` (sparse),
+`enrichment_relevance_pubDate` auf `{'enrichment.relevance':-1, pubDate:-1}`,
+`enrichment_country_pubDate` auf `{'enrichment.geo.country':1, pubDate:-1}`,
+`enrichment_topics_pubDate` auf `{'enrichment.topics':1, pubDate:-1}`.
+Viewport- und Top-Stories-Queries laufen also ohne weitere Vorbereitung über
+einen Index.
 
 Befüllung: täglich 8:00 Uhr durch den Geo-Agenten (Claude-Scheduled-Task) —
-die Daten sind **nicht** realtime; `locatedAt` zeigt die Aktualität.
+die Daten sind **nicht** realtime; `enrichment.enrichedAt` zeigt die Aktualität.
 
 > **Achtung bei neuen Feldern:** Der Agent ist eine Scheduled-Task mit eigenem
 > Auftragstext, der außerhalb dieses Repos liegt. Ein Feld im Tool-Schema
@@ -53,12 +65,22 @@ die Daten sind **nicht** realtime; `locatedAt` zeigt die Aktualität.
 
 ## 2. Beanie-Model — `app/models/news_geo.py`
 
+Modul- und Klassennamen aus der bisherigen webapi-Struktur (`news_geo.py`,
+`NewsGeoService` usw.) bleiben bestehen — geändert haben sich nur die
+zugrunde liegende Collection (`news` statt `newsGeo`) und die Feldpfade.
+Das Document-Model selbst heißt jetzt `News` (embeddet `Enrichment`/`GeoBlock`)
+statt `NewsGeo`:
+
 ```python
-"""Beanie Document model for the newsGeo collection (map feature)."""
+"""Beanie Document models for the news collection (map feature).
+
+`GeoBlock` und `Enrichment` sind in `News.enrichment` eingebettet und werden
+vom mcp-fc-Geolokalisierungs-Agenten über `submit_news_locations` befüllt.
+"""
 
 from datetime import datetime
 
-from beanie import Document, PydanticObjectId
+from beanie import Document
 from pydantic import BaseModel
 
 
@@ -69,37 +91,49 @@ class GeoPoint(BaseModel):
     coordinates: list[float]  # [lon, lat]
 
 
-class NewsGeo(Document):
-    """One geolocated news item, written by the mcp-fc geolocation agent."""
-
-    newsId: PydanticObjectId
+class GeoBlock(BaseModel):
     locatable: bool = True
     location: GeoPoint | None = None
-    country: str | None = None          # ISO 3166-1 alpha-2
+    country: str | None = None
     place: str | None = None
-    precision: str | None = None        # country | region | city
-    confidence: float | None = None     # certainty of the LOCATION
-    relevance: float = 0.0              # importance of the EVENT (0-1)
+    precision: str | None = None
+    confidence: float | None = None
+
+
+class Enrichment(BaseModel):
+    enrichedBy: str
+    enrichedAt: datetime
+    relevance: float | None = None
+    headline: str | None = None
     summary: str | None = None
-    # denormalized from news:
+    topics: list[str] | None = None
+    geo: GeoBlock
+
+
+class News(Document):
     title: str
+    description: str | None = None
     sourceName: str
     link: str
     image: str | None = None
     pubDate: datetime
     category: str
-    # meta:
-    locatedBy: str
-    locatedAt: datetime
+    enrichment: Enrichment | None = None
 
     class Settings:
-        name = "newsGeo"
+        name = "news"
 ```
 
-**Wichtig:** `NewsGeo` in die `document_models`-Liste der Beanie-Initialisierung
-aufnehmen (dort, wo `News`, `NewsSource` etc. registriert sind — z.B.
-`app/core/db.py` / `init_beanie(...)`). Beanie legt keine Indizes an, die
-existieren bereits — keine `Indexed`-Annotationen nötig.
+**Wichtig:** Die webapi hat für die `news`-Collection sehr wahrscheinlich
+bereits ein `News`-Document-Model (z.B. `app/models/news.py`) in der
+`document_models`-Liste der Beanie-Initialisierung registriert (dort, wo auch
+`NewsSource` etc. stehen — z.B. `app/core/db.py` / `init_beanie(...)`). Hier
+nicht zusätzlich registrieren, sondern das bestehende `News`-Model um das
+optionale `enrichment: Enrichment | None = None`-Feld (plus die
+`GeoBlock`/`Enrichment`-Submodels) erweitern — eine zweite `Document`-Klasse
+für dieselbe Collection würde zu einer doppelten Beanie-Registrierung führen.
+Beanie legt keine Indizes an, die existieren bereits (via mcp-fc
+`ensure-indexes`) — keine `Indexed`-Annotationen nötig.
 
 ## 3. Response-Schema — `app/schemas/news_geo.py`
 
@@ -114,8 +148,9 @@ from pydantic import BaseModel
 
 
 class NewsGeoResponse(BaseModel):
-    id: str                    # newsGeo._id
-    newsId: str                # news._id (für Detail-Navigation)
+    id: str                    # news._id
+    newsId: str                # news._id — identisch mit id, für Detail-Navigation
+                                # (kein separates newsGeo-Dokument mehr, daher gleicher Wert)
     lat: float
     lon: float
     country: str
@@ -123,7 +158,9 @@ class NewsGeoResponse(BaseModel):
     precision: str
     confidence: float | None = None
     relevance: float           # 0-1 → Pin-Größe/Farbe in der App
+    headline: str | None = None
     summary: str | None = None
+    topics: list[str] | None = None
     title: str
     sourceName: str
     link: str
@@ -146,15 +183,15 @@ als Bounding-Box, Mongo filtert über den 2dsphere-Index mit einem
 `$geoWithin`-Polygon (`$box` funktioniert NICHT mit 2dsphere-Indizes).
 
 ```python
-"""Service for geolocated news (map feature)."""
+"""Service for geolocated news (map feature) — reads news.enrichment."""
 
 from datetime import datetime
 
-from app.models.news_geo import NewsGeo
+from app.models.news_geo import News
 
 
 class NewsGeoService:
-    """Read-only access to newsGeo. Writes happen via the mcp-fc agent."""
+    """Read-only access to news.enrichment. Writes happen via the mcp-fc agent."""
 
     @staticmethod
     def _bbox_polygon(min_lat: float, min_lon: float, max_lat: float, max_lon: float) -> dict:
@@ -183,22 +220,22 @@ class NewsGeoService:
         country: str | None = None,
         from_date: datetime | None = None,
         to_date: datetime | None = None,
-    ) -> list[NewsGeo]:
+    ) -> list[News]:
         """Located news inside the map viewport, most relevant (or newest) first."""
         query: dict = {
-            "locatable": True,
-            "location": {
+            "enrichment.geo.locatable": True,
+            "enrichment.geo.location": {
                 "$geoWithin": {
                     "$geometry": NewsGeoService._bbox_polygon(min_lat, min_lon, max_lat, max_lon)
                 }
             },
         }
         if min_relevance > 0:
-            query["relevance"] = {"$gte": min_relevance}
+            query["enrichment.relevance"] = {"$gte": min_relevance}
         if category:
             query["category"] = category.upper()
         if country:
-            query["country"] = country.upper()
+            query["enrichment.geo.country"] = country.upper()
         if from_date or to_date:
             query["pubDate"] = {
                 **({"$gte": from_date} if from_date else {}),
@@ -206,22 +243,22 @@ class NewsGeoService:
             }
 
         # relevance first keeps the map readable when many pins compete for space
-        sort = [("relevance", -1), ("pubDate", -1)] if sort_by == "relevance" else [("pubDate", -1)]
-        return await NewsGeo.find(query).sort(sort).limit(limit).to_list()
+        sort = [("enrichment.relevance", -1), ("pubDate", -1)] if sort_by == "relevance" else [("pubDate", -1)]
+        return await News.find(query).sort(sort).limit(limit).to_list()
 
     @staticmethod
     async def get_top_stories(
         limit: int = 20,
         min_relevance: float = 0.7,
         from_date: datetime | None = None,
-    ) -> list[NewsGeo]:
+    ) -> list[News]:
         """Globally most important located news — for the initial (zoomed-out) map."""
-        query: dict = {"locatable": True, "relevance": {"$gte": min_relevance}}
+        query: dict = {"enrichment.geo.locatable": True, "enrichment.relevance": {"$gte": min_relevance}}
         if from_date:
             query["pubDate"] = {"$gte": from_date}
         return await (
-            NewsGeo.find(query)
-            .sort([("relevance", -1), ("pubDate", -1)])   # uses relevance_pubDate index
+            News.find(query)
+            .sort([("enrichment.relevance", -1), ("pubDate", -1)])   # uses enrichment_relevance_pubDate index
             .limit(limit)
             .to_list()
         )
@@ -232,17 +269,17 @@ class NewsGeoService:
         min_relevance: float = 0.0,
     ) -> list[dict]:
         """Counts per country + top relevance — for low zoom levels / overview badges."""
-        match: dict = {"locatable": True}
+        match: dict = {"enrichment.geo.locatable": True}
         if min_relevance > 0:
-            match["relevance"] = {"$gte": min_relevance}
+            match["enrichment.relevance"] = {"$gte": min_relevance}
         if from_date:
             match["pubDate"] = {"$gte": from_date}
-        return await NewsGeo.aggregate([
+        return await News.aggregate([
             {"$match": match},
             {"$group": {
-                "_id": "$country",
+                "_id": "$enrichment.geo.country",
                 "count": {"$sum": 1},
-                "maxRelevance": {"$max": "$relevance"},
+                "maxRelevance": {"$max": "$enrichment.relevance"},
                 "latestPubDate": {"$max": "$pubDate"},
             }},
             {"$sort": {"maxRelevance": -1, "count": -1}},
@@ -264,25 +301,32 @@ from datetime import datetime
 
 from fastapi import APIRouter, Query
 
-from app.models.news_geo import NewsGeo
+from app.models.news_geo import News
 from app.schemas.news_geo import CountryCount, NewsGeoResponse
 from app.services.news_geo import NewsGeoService
 
 router = APIRouter()
 
 
-def _to_response(item: NewsGeo) -> NewsGeoResponse:
+def _to_response(item: News) -> NewsGeoResponse:
+    # Alle Aufrufer filtern vorher auf "enrichment.geo.locatable": True
+    # (siehe NewsGeoService) — enrichment und enrichment.geo sind hier also
+    # garantiert gesetzt, kein zusätzlicher None-Check nötig.
+    enrichment = item.enrichment
+    geo = enrichment.geo
     return NewsGeoResponse(
         id=str(item.id),
-        newsId=str(item.newsId),
-        lat=item.location.coordinates[1],   # GeoJSON: [lon, lat]
-        lon=item.location.coordinates[0],
-        country=item.country or "",
-        place=item.place,
-        precision=item.precision or "country",
-        confidence=item.confidence,
-        relevance=item.relevance,
-        summary=item.summary,
+        newsId=str(item.id),               # kein separates newsGeo-Dokument mehr
+        lat=geo.location.coordinates[1],   # GeoJSON: [lon, lat]
+        lon=geo.location.coordinates[0],
+        country=geo.country or "",
+        place=geo.place,
+        precision=geo.precision or "country",
+        confidence=geo.confidence,
+        relevance=enrichment.relevance or 0.0,
+        headline=enrichment.headline,
+        summary=enrichment.summary,
+        topics=enrichment.topics,
         title=item.title,
         sourceName=item.sourceName,
         link=item.link,
@@ -404,19 +448,22 @@ marker.glyphImage = item.relevance >= 0.9 ? UIImage(systemName: "exclamationmark
 
 ## 7. Performance & Betrieb
 
-- Die Viewport-Query nutzt den 2dsphere-Index; `limit ≤ 500` hart deckeln
-  (Schema oben tut das) — die Karte braucht nie mehr.
+- Die Viewport-Query nutzt den `enrichment_location_2dsphere`-Index;
+  `limit ≤ 500` hart deckeln (Schema oben tut das) — die Karte braucht nie mehr.
 - **`minRelevance` ist der wirksamste Hebel:** In der Weltansicht liefert
   `minRelevance=0.7` statt hunderter Pins nur die relevanten — weniger DB-Arbeit,
   kleinere Payloads, lesbarere Karte. `/news-geo/top` läuft rein über den
-  `{relevance:-1, pubDate:-1}`-Index (kein Geo-Scan).
+  `enrichment_relevance_pubDate`-Index (`{'enrichment.relevance':-1, pubDate:-1}`,
+  kein Geo-Scan).
 - Daten ändern sich nur beim Agenten-Lauf (täglich 8:00): ein kurzer
   Response-Cache (60–300 s, z.B. `fastapi-cache` oder CDN-Header
   `Cache-Control: public, max-age=120`) eliminiert praktisch alle DB-Last.
-- Die API braucht **keinen** Schreibzugriff auf `newsGeo` — Schreibweg ist
+- Die API braucht **keinen** Schreibzugriff auf `news` — Schreibweg ist
   ausschließlich MCP (`submit_news_locations`, Scope `write`).
-- Monitoring-Idee: Alter von `max(locatedAt)` als Health-Signal — ist es > 48 h,
-  läuft der Geo-Agent nicht (Desktop-App war zu / Task deaktiviert).
+- Monitoring-Idee: Alter von `max(news.enrichment.enrichedAt)` als Health-Signal
+  — ist es > 48 h, läuft der Geo-Agent nicht (Desktop-App war zu / Task
+  deaktiviert). Health-Signal ist jetzt `max(news.enrichment.enrichedAt)` statt
+  `max(newsGeo.locatedAt)`.
 
 ## 8. Smoke-Test nach Einbau
 
@@ -430,6 +477,8 @@ curl -s "https://api.finanz-copilot.de/api/v1/news-geo/countries" | python3 -m j
 ```
 
 Erwartung: Pins innerhalb Deutschlands (Box 47–55°N, 5–16°E) mit `lat`/`lon`,
-`relevance`, `title`, `summary`, `image`; Top-Liste absteigend nach `relevance`;
-Länderliste mit Counts und `maxRelevance`. Voraussetzung: der Geo-Agent ist
-mindestens einmal gelaufen (sonst leere Arrays).
+`relevance`, `title`, `summary`, `image`; jetzt zusätzlich `headline` und
+`topics` (aus `enrichment.headline`/`enrichment.topics`, können bei älteren,
+noch nicht neu anreicherten Items `null` sein); Top-Liste absteigend nach
+`relevance`; Länderliste mit Counts und `maxRelevance`. Voraussetzung: der
+Geo-Agent ist mindestens einmal gelaufen (sonst leere Arrays).
