@@ -12,7 +12,8 @@
     "ensure-indexes": "tsx scripts/ensure-indexes.ts",
     "backfill-news-relevance": "tsx scripts/backfill-news-relevance.ts",
     "backfill-enrichment": "tsx scripts/backfill-enrichment.ts",
-    "verify-ingester-writes": "tsx scripts/verify-ingester-writes.ts"
+    "verify-ingester-writes": "tsx scripts/verify-ingester-writes.ts",
+    "cleanup-legacy-geo": "tsx scripts/cleanup-legacy-geo.ts"
   },
   "type": "module",
   "dependencies": {
