@@ -21,10 +21,13 @@ await news.createIndex({ 'stats.views': -1, pubDate: -1 }, { name: 'views_pubDat
 await news.createIndex({ 'stats.likes': -1, pubDate: -1 }, { name: 'likes_pubDate' });
 console.log('creating news enrichment indexes…');
 // Sortierung von get_news_for_geocoding (find + sort pubDate)
+// Alt-Index ohne Namen aus früherem Lauf entfernen; existiert er nicht (idempotenter Re-Run), ist das ok
 try {
   await news.dropIndex('pubDate_-1');
-} catch (e) {
-  // Index may not exist, that's ok
+} catch (e: any) {
+  if (e.code !== 27 && e.codeName !== 'IndexNotFound') {
+    throw e;
+  }
 }
 await news.createIndex({ pubDate: -1 }, { name: 'pubDate' });
 // Karte: Viewport-Query über den enrichment-Block
