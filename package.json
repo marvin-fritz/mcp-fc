@@ -11,6 +11,7 @@
     "test": "vitest run",
     "ensure-indexes": "tsx scripts/ensure-indexes.ts",
     "backfill-news-relevance": "tsx scripts/backfill-news-relevance.ts",
+    "backfill-enrichment": "tsx scripts/backfill-enrichment.ts",
     "verify-ingester-writes": "tsx scripts/verify-ingester-writes.ts"
   },
   "type": "module",
