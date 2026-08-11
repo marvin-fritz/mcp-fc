@@ -1,10 +1,11 @@
-# Auftragstext für die Routine fc_geo_news_locating
+# Auftragstext für die Routine fc_news_agent
 
 Stand 2026-08-11 — nach dem enrichment-Umbau (topics, noLocation-Erweiterung,
-from-Fenster). Diesen Text 1:1 in die Claude-Scheduled-Task übernehmen (der
-Auftragstext liegt NICHT im Repo; Felder, die er nicht aufzählt, füllt der
-Agent nicht). Änderungen gegenüber der vorherigen Fassung sind mit ⬅ NEU
-markiert — die Marker beim Übernehmen entfernen.
+from-Fenster); seit 2026-08-11 in der Scheduled Task **fc_news_agent** aktiv
+(vorher fc_geo_news_locating). Diesen Text 1:1 in die Claude-Scheduled-Task
+übernehmen (der Auftragstext liegt NICHT im Repo; Felder, die er nicht
+aufzählt, füllt der Agent nicht). Änderungen gegenüber der vorherigen Fassung
+sind mit ⬅ NEU markiert — die Marker beim Übernehmen entfernen.
 
 ---
 
