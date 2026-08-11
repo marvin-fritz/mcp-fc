@@ -2,8 +2,11 @@
  * Phase-5-Rückbau — ERST AUSFÜHREN, wenn die webapi vollständig auf
  * news.enrichment.* liest (Marvin bestätigt). Danach zusätzlich im Code:
  * Dual-Write entfernen (newsGeo-Upsert + buildNewsPatch in
- * src/features/geonews/index.ts, newsPatch.ts löschen) und newsGeo aus
- * src/db/collections.ts sowie scripts/ensure-indexes.ts streichen.
+ * src/features/geonews/index.ts, newsPatch.ts löschen), newsGeo aus
+ * src/db/collections.ts sowie scripts/ensure-indexes.ts streichen, und in
+ * scripts/ensure-indexes.ts zusätzlich die Erstellung des news-Index
+ * `relevance_pubDate` entfernen — sonst legt ein späterer ensure-indexes-Lauf
+ * den hier gedroppten Alt-Index stillschweigend wieder an.
  *
  * Entfernt die Top-Level-Duplikate (stammen aus buildNewsPatch, nicht vom
  * Ingester) und droppt newsGeo. Läuft nur, wenn --yes übergeben wird.

@@ -4,6 +4,9 @@
  * als newsGeo.locatedAt ist (frische Agenten-Submits gewinnen).
  * Nicht während des Agenten-Laufs (täglich 8:00) starten.
  * topics bleibt für Alt-Docs leer — das Feld gibt es erst ab dem Tool-Umbau.
+ * Vorbedingung: scripts/verify-ingester-writes.ts muss in der Umgebung mit
+ * realen Agenten-Writes grün gelaufen sein (geprüft > 0, Exit 0) — sonst
+ * Merge-Risiko durch Replace-schreibenden Ingester.
  */
 import { loadConfig } from '../src/config.js';
 import { closeMongo, getDb } from '../src/db/client.js';

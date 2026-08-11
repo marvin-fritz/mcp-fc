@@ -4,6 +4,9 @@
  * newsGeo-Einträge (locatable:true, relevance gesetzt), die älter als 3 Tage
  * sind — deren news-Doc muss relevance noch tragen. Mismatches > 0 => Verdacht
  * auf Replace-Verhalten, Merge NICHT fortsetzen, erst Ingester prüfen/fixen.
+ * Gibt es keine prüfbaren Fälle (checked === 0, z.B. leere Collection oder
+ * alle Einträge jünger als 3 Tage), ist keine Aussage möglich — dann NICHT
+ * "OK" ausgeben, sondern INCONCLUSIVE mit Exit-Code 2 (Exit 1 bleibt FAIL).
  */
 import type { ObjectId } from 'mongodb';
 import { loadConfig } from '../src/config.js';
@@ -45,6 +48,14 @@ console.log(`relevance verschwunden (Replace-Verdacht!): ${missing}`);
 if (missing > 0) {
   console.error('FAIL: Ingester überschreibt denormalisierte Felder — Merge stoppen, Ingester-Repo prüfen.');
   process.exit(1);
+}
+if (checked === 0) {
+  console.warn(
+    'INCONCLUSIVE: 0 prüfbare Fälle (alle newsGeo-Einträge jünger als 3 Tage oder Collection leer) — ' +
+      'Aussage nicht möglich. In der Umgebung mit realen Agenten-Writes erneut ausführen.',
+  );
+  await closeMongo();
+  process.exit(2);
 }
 console.log('OK: keine Hinweise auf Replace-Verhalten.');
 await closeMongo();
