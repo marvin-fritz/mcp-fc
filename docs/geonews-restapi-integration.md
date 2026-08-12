@@ -16,11 +16,11 @@ webapi-Umstellung gedroppt.
 | Feld | Typ | Bedeutung |
 |---|---|---|
 | `enrichment` | object? | fehlt = noch nicht vom Agenten bearbeitet |
-| `enrichment.enrichedBy` / `enrichedAt` | str / date | Agent-Name + Zeitstempel |
+| `enrichment.enrichedBy` / `enrichedAt` | str / date | Agent-Name (z.B. `fcNewsAgent`; ältere Docs: Auth-Identität/E-Mail) + Zeitstempel |
 | `enrichment.relevance` | float? | 0–1 — Bedeutung des EREIGNISSES (auch ohne Ort gesetzt) |
 | `enrichment.headline` | str? | kurze deutsche Schlagzeile (≤90 Zeichen, ehem. `geoTitle`) |
 | `enrichment.summary` | str? | 1–2 Sätze (Pin-Callout / Teaser) |
-| `enrichment.topics` | [str]? | 1–5 Themen-Tags, Englisch, Title Case (`"US Economy"`, `"DAX"`) |
+| `enrichment.topics` | [str]? | 1–8 Themen-Tags, Englisch, Title Case (`"US Economy"`, `"DAX"`, auch Personen: `"Zohran Mamdani"`) |
 | `enrichment.geo.locatable` | bool | `false` = kein sinnvoller Ort (**für die Karte filtern!**) |
 | `enrichment.geo.location` | GeoJSON Point | `[lon, lat]` — Reihenfolge beachten |
 | `enrichment.geo.country` | str? | ISO 3166-1 alpha-2, uppercase |

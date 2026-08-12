@@ -265,16 +265,45 @@ describe('submit_news_locations → enrichment-Block', () => {
     expect(doc.relevance).toBe(0.6);
   });
 
-  it('lehnt mehr als 5 topics ab', async () => {
-    const res: any = await h.client.callTool({
+  it('akzeptiert bis zu 8 topics und lehnt 9 ab', async () => {
+    const ok: any = await h.client.callTool({
       name: 'submit_news_locations',
       arguments: {
         items: [{
           newsId: String(newsIds[0]), noLocation: true,
-          topics: ['A1', 'B2', 'C3', 'D4', 'E5', 'F6'],
+          topics: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8'],
         }],
       },
     });
-    expect(res.isError).toBe(true);
+    expect(text(ok)).toContain('ok: 0 located, 1 noLocation');
+    const doc: any = await db.collection('news').findOne({ _id: newsIds[0] });
+    expect(doc.enrichment.topics).toHaveLength(8);
+
+    const tooMany: any = await h.client.callTool({
+      name: 'submit_news_locations',
+      arguments: {
+        items: [{
+          newsId: String(newsIds[0]), noLocation: true,
+          topics: ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9'],
+        }],
+      },
+    });
+    expect(tooMany.isError).toBe(true);
+  });
+
+  it('agentName setzt enrichedBy und locatedBy, Fallback bleibt der Auth-Key', async () => {
+    await h.client.callTool({
+      name: 'submit_news_locations',
+      arguments: {
+        agentName: 'fcNewsAgent',
+        items: [{ newsId: String(newsIds[1]), noLocation: true, relevance: 0.3 }],
+      },
+    });
+    const doc: any = await db.collection('news').findOne({ _id: newsIds[1] });
+    expect(doc.enrichment.enrichedBy).toBe('fcNewsAgent');
+    const geoDoc: any = await db.collection('newsGeo').findOne({ newsId: newsIds[1] });
+    expect(geoDoc.locatedBy).toBe('fcNewsAgent');
+    // Fallback ohne agentName: Auth-Key (hier 'test') — durch früheren Test belegt,
+    // siehe "schreibt den vollen enrichment-Block" (enrichedBy 'test').
   });
 });

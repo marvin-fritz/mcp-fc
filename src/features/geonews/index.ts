@@ -37,10 +37,10 @@ const locationItem = z.object({
   topics: z
     .array(z.string().min(2).max(60))
     .min(1)
-    .max(5)
+    .max(8)
     .optional()
     .describe(
-      '1-5 Themen-Tags: Englisch, Title Case — z.B. ["US Economy","US Job Market","DAX"]. Kategorien: Indizes (DAX, S&P 500), Länder-/Regionen-Themen (US Economy, Eurozone Economy), Märkte/Assetklassen (Oil, Gold, Bonds, Crypto), Institutionen (ECB, Fed), Themenfelder (Interest Rates, Inflation, Tariffs), Einzelwerte als Firmenname (Apple, Siemens). WICHTIG: Trägt die News ein spezifisches Thema, vergib es zusätzlich konkret (z.B. Private Credit, Credit Defaults, CRE Debt, Yen Carry Trade, AI Capex) — die Tags werden als Zeitreihe für Trend-Früherkennung aggregiert. Dasselbe Thema deshalb immer mit exakt demselben Tag, keine neuen Formulierungen für bekannte Themen. Keine Sätze, keine Duplikate, kein Kategorie-Echo (ECONOMY ist Kategorie, kein Topic). Auch bei noLocation angeben.',
+      '1-8 Themen-Tags (typisch 2-5): Englisch, Title Case — z.B. ["US Economy","US Job Market","DAX"]. Kategorien: Indizes (DAX, S&P 500), Länder-/Regionen-Themen (US Economy, Eurozone Economy), Märkte/Assetklassen (Oil, Gold, Bonds, Crypto), Institutionen (ECB, Fed), Themenfelder (Interest Rates, Inflation, Tariffs), Einzelwerte als Firmenname (Apple, Siemens), Personen mit vollem Namen, wenn sie das Ereignis prägen (Zohran Mamdani, Jerome Powell, Elon Musk). WICHTIG: Trägt die News ein spezifisches Thema, vergib es zusätzlich konkret (z.B. Private Credit, Credit Defaults, CRE Debt, Yen Carry Trade, AI Capex) — die Tags werden als Zeitreihe für Trend-Früherkennung aggregiert. Dasselbe Thema/dieselbe Person deshalb immer mit exakt demselben Tag, keine neuen Formulierungen für bekannte Themen. Keine Sätze, keine Duplikate, kein Kategorie-Echo (ECONOMY ist Kategorie, kein Topic). Auch bei noLocation angeben.',
     ),
 });
 
@@ -97,14 +97,23 @@ export const geonewsFeature: FeatureModule = {
       name: 'submit_news_locations',
       title: 'Submit news geolocations',
       description:
-        'Store geolocations for news (primary write: enrichment block on news, upsert by newsId; also writes newsGeo during the transition phase). Each item: either a location (lat, lon, country ISO2, precision, relevance — plus optional place, confidence, summary ≤300 chars for the map pin, headline ≤90 chars: a short German headline that YOU write yourself, even for foreign-language sources — do NOT copy the source title from get_news_for_geocoding, write a new one; active, concrete, no source attribution, not a summary sentence, topics: 1-5 English Title-Case theme tags like ["US Economy","DAX"] — be concrete for specific themes (Private Credit, Credit Defaults, Yen Carry Trade), always reuse the exact same tag for the same theme: the tags feed a trend early-warning time series) or {"newsId":"…","noLocation":true} for news without a meaningful location. relevance (0-1) drives pin size/filtering on the map: 1.0 = historic shock, 0.7 = major event, 0.3 = routine, <0.1 = trivial. Auch noLocation-Items sollen relevance, topics, headline und summary mitliefern — Themen und Wichtigkeit sind ortsunabhängig. Invalid items are skipped and reported. Example: {"items":[{"newsId":"665f0c…","lat":50.11,"lon":8.68,"country":"DE","place":"Frankfurt","precision":"city","relevance":0.7,"summary":"EZB hebt Zinsen an.","headline":"EZB hebt Leitzins an","topics":["ECB","Interest Rates","Eurozone Economy"]}]}',
+        'Store geolocations for news (primary write: enrichment block on news, upsert by newsId; also writes newsGeo during the transition phase). Each item: either a location (lat, lon, country ISO2, precision, relevance — plus optional place, confidence, summary ≤300 chars for the map pin, headline ≤90 chars: a short German headline that YOU write yourself, even for foreign-language sources — do NOT copy the source title from get_news_for_geocoding, write a new one; active, concrete, no source attribution, not a summary sentence, topics: 1-8 English Title-Case theme tags like ["US Economy","DAX"], incl. defining persons by full name ("Zohran Mamdani") — be concrete for specific themes (Private Credit, Credit Defaults, Yen Carry Trade), always reuse the exact same tag for the same theme: the tags feed a trend early-warning time series) or {"newsId":"…","noLocation":true} for news without a meaningful location. relevance (0-1) drives pin size/filtering on the map: 1.0 = historic shock, 0.7 = major event, 0.3 = routine, <0.1 = trivial. Auch noLocation-Items sollen relevance, topics, headline und summary mitliefern — Themen und Wichtigkeit sind ortsunabhängig. Invalid items are skipped and reported. Example: {"agentName":"fcNewsAgent","items":[{"newsId":"665f0c…","lat":50.11,"lon":8.68,"country":"DE","place":"Frankfurt","precision":"city","relevance":0.7,"summary":"EZB hebt Zinsen an.","headline":"EZB hebt Leitzins an","topics":["ECB","Interest Rates","Eurozone Economy"]}]}',
       inputSchema: {
         items: z.array(locationItem).min(1).max(100),
+        agentName: z
+          .string()
+          .min(2)
+          .max(40)
+          .regex(/^[A-Za-z0-9._-]+$/)
+          .optional()
+          .describe('Name des einreichenden Agenten, z.B. "fcNewsAgent" — wird als enrichedBy/locatedBy gespeichert (Fallback: Auth-Identität)'),
       },
       requiredScope: 'write',
       annotations: { readOnlyHint: false, destructiveHint: false },
       handler: async (input, { db, auth, log }) => {
         const items = input.items as Array<z.infer<typeof locationItem>>;
+        // Agentenname für die Provenienz; die echte Auth-Identität bleibt im Log.
+        const enrichedBy = (input.agentName as string | undefined) ?? auth.keyName;
         const c = cols(db);
         const ids = items.map((i) => new ObjectId(i.newsId));
         const newsDocs = await c.news
@@ -133,7 +142,7 @@ export const geonewsFeature: FeatureModule = {
             image: news.image ?? null,
             pubDate: news.pubDate,
             category: news.category,
-            locatedBy: auth.keyName,
+            locatedBy: enrichedBy,
             locatedAt: new Date(),
           };
           let doc: Document;
@@ -171,7 +180,7 @@ export const geonewsFeature: FeatureModule = {
                 $set: {
                   // Top-Level-Denormalisierung: bleibt bis Phase 5 (webapi liest sie noch)
                   ...buildNewsPatch(item, base.locatedAt as Date).$set,
-                  enrichment: buildEnrichment(item, auth.keyName, base.locatedAt as Date),
+                  enrichment: buildEnrichment(item, enrichedBy, base.locatedAt as Date),
                 },
               },
             },
