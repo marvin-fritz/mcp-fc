@@ -4,18 +4,8 @@ import { closeMongo, getDb } from '../src/db/client.js';
 const db = await getDb(loadConfig({ ...process.env, MCP_AUTH_DISABLED: 'true' }));
 console.log('creating news text index (idempotent, may take a minute on ~500k docs)…');
 await db.collection('news').createIndex({ title: 'text', description: 'text' }, { name: 'news_text' });
-console.log('creating newsGeo indexes…');
-const geo = db.collection('newsGeo');
-await geo.createIndex({ newsId: 1 }, { unique: true, name: 'newsId_unique' });
-await geo.createIndex({ location: '2dsphere' }, { sparse: true, name: 'location_2dsphere' });
-await geo.createIndex({ pubDate: -1 });
-await geo.createIndex({ country: 1, pubDate: -1 });
-// top-stories queries: highest relevance first, newest as tiebreaker
-await geo.createIndex({ relevance: -1, pubDate: -1 }, { name: 'relevance_pubDate' });
 console.log('creating news sort indexes…');
 const news = db.collection('news');
-// sortBy=relevance in der REST-API
-await news.createIndex({ relevance: -1, pubDate: -1 }, { name: 'relevance_pubDate' });
 // sortBy=views / sortBy=likes ("Meistgelesen")
 await news.createIndex({ 'stats.views': -1, pubDate: -1 }, { name: 'views_pubDate' });
 await news.createIndex({ 'stats.likes': -1, pubDate: -1 }, { name: 'likes_pubDate' });
@@ -35,7 +25,7 @@ await news.createIndex(
   { 'enrichment.geo.location': '2dsphere' },
   { sparse: true, name: 'enrichment_location_2dsphere' },
 );
-// Top-Stories / Relevanz-Sortierung aus dem Block (löst news.relevance in Phase 5 ab)
+// Top-Stories / Relevanz-Sortierung (sortBy=relevance und hot in der REST-API)
 await news.createIndex(
   { 'enrichment.relevance': -1, pubDate: -1 },
   { name: 'enrichment_relevance_pubDate' },

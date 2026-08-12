@@ -10,8 +10,8 @@ Zugeschnitten auf die bestehende Struktur (Beanie-Models, Service-Layer,
 
 Quelle ist jetzt die `news`-Collection selbst. Der Geo-Agent schreibt einen
 `enrichment`-Block direkt an das news-Dokument (Upsert per `$set` durch das
-MCP-Tool `submit_news_locations`); `newsGeo` ist deprecated und wird nach der
-webapi-Umstellung gedroppt.
+MCP-Tool `submit_news_locations`); `newsGeo` wurde am 2026-08-12 gedroppt
+(Phase 5 abgeschlossen).
 
 | Feld | Typ | Bedeutung |
 |---|---|---|
@@ -29,10 +29,9 @@ webapi-Umstellung gedroppt.
 | `enrichment.geo.confidence` | float? | 0–1 — Sicherheit der VERORTUNG |
 | `title`, `sourceName`, `link`, `image`, `pubDate`, `category` | — | native news-Felder — **keine Denormalisierung mehr nötig** |
 
-Übergangsphase: Die bisherigen Top-Level-Felder (`relevance`, `geoTitle`,
-`geoSummary`, `country`, `place`, `geoLocatedAt`) werden noch parallel
-geschrieben und erst entfernt, wenn die webapi vollständig auf
-`enrichment.*` liest.
+Die früheren Top-Level-Duplikate (`relevance`, `geoTitle`, `geoSummary`,
+`country`, `place`, `geoLocatedAt`) wurden am 2026-08-12 entfernt —
+`enrichment.*` ist der einzige Ort für Agenten-Daten.
 
 **relevance-Skala** (vom Agenten vergeben, feste Ankerpunkte):
 

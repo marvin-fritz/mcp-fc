@@ -14,7 +14,6 @@ let newsIds: ObjectId[] = [];
 beforeAll(async () => {
   const config = loadConfig({ ...process.env, MCP_AUTH_DISABLED: 'true' });
   db = await getDb(config);
-  await db.collection('newsGeo').deleteMany({ category: CAT });
   await db.collection('news').deleteMany({ category: CAT });
   const now = new Date();
   const docs = [1, 2, 3].map((i) => ({
@@ -35,7 +34,6 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db.collection('newsGeo').deleteMany({ newsId: { $in: newsIds } });
   await db.collection('news').deleteMany({ category: CAT });
   await h.close();
   await hReadOnly.close();
@@ -75,20 +73,16 @@ describe('submit_news_locations', () => {
       },
     });
     expect(text(res)).toContain('ok: 2 located, 1 noLocation (0 updated)');
-    const doc: any = await db.collection('newsGeo').findOne({ newsId: newsIds[0] });
-    expect(doc.location).toEqual({ type: 'Point', coordinates: [8.6821, 50.1109] });
-    expect(doc.country).toBe('DE');
-    expect(doc.image).toBe('https://test.mcp-fc.local/img1.jpg');
-    expect(doc.link).toBe('https://test.mcp-fc.local/1');
-    expect(doc.locatable).toBe(true);
-    expect(doc.locatedBy).toBe('test');
-    expect(doc.summary).toBe('EZB-Entscheid.');
-    expect(doc.relevance).toBe(0.72);
-    const marker: any = await db.collection('newsGeo').findOne({ newsId: newsIds[2] });
-    expect(marker.locatable).toBe(false);
-    expect(marker.location).toBeUndefined();
-    expect(marker.relevance).toBeUndefined();
-    expect(marker.title).toContain('Test News 3');
+    const doc: any = await db.collection('news').findOne({ _id: newsIds[0] });
+    expect(doc.enrichment.geo.location).toEqual({ type: 'Point', coordinates: [8.6821, 50.1109] });
+    expect(doc.enrichment.geo.country).toBe('DE');
+    expect(doc.enrichment.geo.locatable).toBe(true);
+    expect(doc.enrichment.enrichedBy).toBe('test');
+    expect(doc.enrichment.summary).toBe('EZB-Entscheid.');
+    expect(doc.enrichment.relevance).toBe(0.72);
+    const marker: any = await db.collection('news').findOne({ _id: newsIds[2] });
+    expect(marker.enrichment.geo).toEqual({ locatable: false });
+    expect(marker.enrichment.relevance).toBeUndefined();
   });
 
   it('requires relevance for located items and rejects out-of-range values', async () => {
@@ -117,9 +111,9 @@ describe('submit_news_locations', () => {
       arguments: { items: [{ newsId: String(newsIds[0]), lat: 48.1351, lon: 11.582, country: 'DE', place: 'München', precision: 'city', relevance: 0.4 }] },
     });
     expect(text(res)).toContain('ok: 1 located, 0 noLocation (1 updated)');
-    const doc: any = await db.collection('newsGeo').findOne({ newsId: newsIds[0] });
-    expect(doc.place).toBe('München');
-    expect(doc.relevance).toBe(0.4);
+    const doc: any = await db.collection('news').findOne({ _id: newsIds[0] });
+    expect(doc.enrichment.geo.place).toBe('München');
+    expect(doc.enrichment.relevance).toBe(0.4);
   });
 
   it('skips invalid items but writes valid ones', async () => {
@@ -138,73 +132,6 @@ describe('submit_news_locations', () => {
     expect(out).toContain('ok: 1 located, 0 noLocation (1 updated)');
     expect(out).toContain(`ERROR item 0: newsId ${unknownId} not found`);
     expect(out).toContain('ERROR item 2:');
-  });
-});
-
-describe('submit_news_locations → news-Denormalisierung', () => {
-  it('schreibt relevance, geoSummary, country und place an den news-Doc', async () => {
-    await h.client.callTool({
-      name: 'submit_news_locations',
-      arguments: {
-        items: [{
-          newsId: String(newsIds[0]),
-          lat: 50.11,
-          lon: 8.68,
-          country: 'DE',
-          place: 'Frankfurt',
-          precision: 'city',
-          relevance: 0.82,
-          summary: 'Testzusammenfassung.',
-        }],
-      },
-    });
-    const doc = await db.collection('news').findOne({ _id: newsIds[0] });
-    expect(doc?.relevance).toBe(0.82);
-    expect(doc?.geoSummary).toBe('Testzusammenfassung.');
-    expect(doc?.country).toBe('DE');
-    expect(doc?.place).toBe('Frankfurt');
-    expect(doc?.geoLocatedAt).toBeInstanceOf(Date);
-  });
-
-  it('setzt bei noLocation nur geoLocatedAt, keine relevance', async () => {
-    // newsIds[2] statt newsIds[1]: newsIds[1] bekommt in einem früheren Test
-    // dieser Datei ("skips invalid items but writes valid ones") bereits eine
-    // relevance geschrieben — mit der Denormalisierung würde die Prüfung auf
-    // "keine relevance" sonst an Testreihenfolge-Verschmutzung scheitern statt
-    // am eigentlichen Verhalten. newsIds[2] wird nur mit noLocation oder mit
-    // ungültigen (übersprungenen) Items adressiert, bekommt also nie relevance.
-    await h.client.callTool({
-      name: 'submit_news_locations',
-      arguments: { items: [{ newsId: String(newsIds[2]), noLocation: true }] },
-    });
-    const doc = await db.collection('news').findOne({ _id: newsIds[2] });
-    expect(doc?.geoLocatedAt).toBeInstanceOf(Date);
-    expect(doc?.relevance).toBeUndefined();
-  });
-
-  it('schreibt geoTitle an den news-Doc, wenn der Agent eine Schlagzeile liefert', async () => {
-    // newsIds[2] hat in dieser Datei bislang nie einen erfolgreichen
-    // Located-Submit bekommen (nur noLocation-Markierungen und ein wegen
-    // fehlender Pflichtfelder übersprungenes Item) — sonst würde diese
-    // Prüfung Alt-Zustand aus einem früheren Test bestätigen statt das
-    // eigentliche Verhalten (dieselbe Falle wie bei newsIds[1] oben).
-    await h.client.callTool({
-      name: 'submit_news_locations',
-      arguments: {
-        items: [{
-          newsId: String(newsIds[2]),
-          lat: 52.52,
-          lon: 13.405,
-          country: 'DE',
-          place: 'Berlin',
-          precision: 'city',
-          relevance: 0.6,
-          headline: 'Testschlagzeile für Geo-Agent',
-        }],
-      },
-    });
-    const doc = await db.collection('news').findOne({ _id: newsIds[2] });
-    expect(doc?.geoTitle).toBe('Testschlagzeile für Geo-Agent');
   });
 });
 
@@ -235,13 +162,11 @@ describe('submit_news_locations → enrichment-Block', () => {
       precision: 'city',
       confidence: 0.9,
     });
-    // Dual-Write bleibt intakt:
-    expect(doc.relevance).toBe(0.77);
-    const geoDoc: any = await db.collection('newsGeo').findOne({ newsId: newsIds[0] });
-    expect(geoDoc.relevance).toBe(0.77);
+    // Kein Top-Level-Duplikat mehr: enrichment ist der einzige Schreibweg.
+    expect(doc.relevance).toBeUndefined();
   });
 
-  it('noLocation-Items dürfen topics und relevance mitliefern — nur im Block, nicht top-level', async () => {
+  it('noLocation-Items dürfen topics und relevance mitliefern', async () => {
     await h.client.callTool({
       name: 'submit_news_locations',
       arguments: {
@@ -259,10 +184,6 @@ describe('submit_news_locations → enrichment-Block', () => {
     expect(doc.enrichment.relevance).toBe(0.55);
     expect(doc.enrichment.topics).toEqual(['US Economy', 'US Job Market', 'DAX']);
     expect(doc.enrichment.headline).toBe('US-Jobdaten verunsichern Anleger');
-    // Top-Level-Denormalisierung bei noLocation unverändert: nur geoLocatedAt.
-    // (newsIds[1] hat aus früheren Tests bereits relevance 0.6 top-level —
-    // die darf durch den noLocation-Submit nicht überschrieben werden.)
-    expect(doc.relevance).toBe(0.6);
   });
 
   it('akzeptiert bis zu 8 topics und lehnt 9 ab', async () => {
@@ -291,7 +212,7 @@ describe('submit_news_locations → enrichment-Block', () => {
     expect(tooMany.isError).toBe(true);
   });
 
-  it('agentName setzt enrichedBy und locatedBy, Fallback bleibt der Auth-Key', async () => {
+  it('agentName setzt enrichedBy, Fallback bleibt der Auth-Key', async () => {
     await h.client.callTool({
       name: 'submit_news_locations',
       arguments: {
@@ -301,8 +222,6 @@ describe('submit_news_locations → enrichment-Block', () => {
     });
     const doc: any = await db.collection('news').findOne({ _id: newsIds[1] });
     expect(doc.enrichment.enrichedBy).toBe('fcNewsAgent');
-    const geoDoc: any = await db.collection('newsGeo').findOne({ newsId: newsIds[1] });
-    expect(geoDoc.locatedBy).toBe('fcNewsAgent');
     // Fallback ohne agentName: Auth-Key (hier 'test') — durch früheren Test belegt,
     // siehe "schreibt den vollen enrichment-Block" (enrichedBy 'test').
   });

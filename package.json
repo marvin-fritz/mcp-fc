@@ -10,11 +10,7 @@
     "dev": "tsx src/server.ts",
     "test": "vitest run",
     "ensure-indexes": "tsx scripts/ensure-indexes.ts",
-    "backfill-news-relevance": "tsx scripts/backfill-news-relevance.ts",
-    "backfill-enrichment": "tsx scripts/backfill-enrichment.ts",
-    "normalize-enrichedby": "tsx scripts/normalize-enrichedby.ts",
-    "verify-ingester-writes": "tsx scripts/verify-ingester-writes.ts",
-    "cleanup-legacy-geo": "tsx scripts/cleanup-legacy-geo.ts"
+    "geo-coverage": "tsx scripts/geo-coverage.ts"
   },
   "type": "module",
   "dependencies": {

@@ -7,7 +7,6 @@ import { fmtDate } from '../../format/num.js';
 import { table } from '../../format/table.js';
 import type { FeatureModule } from '../types.js';
 import { buildEnrichment } from './enrichment.js';
-import { buildNewsPatch } from './newsPatch.js';
 
 const locationItem = z.object({
   newsId: z.string().regex(/^[a-f0-9]{24}$/i).describe('news _id (24-char hex from get_news_for_geocoding)'),
@@ -97,7 +96,7 @@ export const geonewsFeature: FeatureModule = {
       name: 'submit_news_locations',
       title: 'Submit news geolocations',
       description:
-        'Store geolocations for news (primary write: enrichment block on news, upsert by newsId; also writes newsGeo during the transition phase). Each item: either a location (lat, lon, country ISO2, precision, relevance — plus optional place, confidence, summary ≤300 chars for the map pin, headline ≤90 chars: a short German headline that YOU write yourself, even for foreign-language sources — do NOT copy the source title from get_news_for_geocoding, write a new one; active, concrete, no source attribution, not a summary sentence, topics: 1-8 English Title-Case theme tags like ["US Economy","DAX"], incl. defining persons by full name ("Zohran Mamdani") — be concrete for specific themes (Private Credit, Credit Defaults, Yen Carry Trade), always reuse the exact same tag for the same theme: the tags feed a trend early-warning time series) or {"newsId":"…","noLocation":true} for news without a meaningful location. relevance (0-1) drives pin size/filtering on the map: 1.0 = historic shock, 0.7 = major event, 0.3 = routine, <0.1 = trivial. Auch noLocation-Items sollen relevance, topics, headline und summary mitliefern — Themen und Wichtigkeit sind ortsunabhängig. Invalid items are skipped and reported. Example: {"agentName":"fcNewsAgent","items":[{"newsId":"665f0c…","lat":50.11,"lon":8.68,"country":"DE","place":"Frankfurt","precision":"city","relevance":0.7,"summary":"EZB hebt Zinsen an.","headline":"EZB hebt Leitzins an","topics":["ECB","Interest Rates","Eurozone Economy"]}]}',
+        'Store news enrichment (writes the enrichment block on the news doc, upsert by newsId). Each item: either a location (lat, lon, country ISO2, precision, relevance — plus optional place, confidence, summary ≤300 chars for the map pin, headline ≤90 chars: a short German headline that YOU write yourself, even for foreign-language sources — do NOT copy the source title from get_news_for_geocoding, write a new one; active, concrete, no source attribution, not a summary sentence, topics: 1-8 English Title-Case theme tags like ["US Economy","DAX"], incl. defining persons by full name ("Zohran Mamdani") — be concrete for specific themes (Private Credit, Credit Defaults, Yen Carry Trade), always reuse the exact same tag for the same theme: the tags feed a trend early-warning time series) or {"newsId":"…","noLocation":true} for news without a meaningful location. relevance (0-1) drives pin size/filtering on the map: 1.0 = historic shock, 0.7 = major event, 0.3 = routine, <0.1 = trivial. Auch noLocation-Items sollen relevance, topics, headline und summary mitliefern — Themen und Wichtigkeit sind ortsunabhängig. Invalid items are skipped and reported. Example: {"agentName":"fcNewsAgent","items":[{"newsId":"665f0c…","lat":50.11,"lon":8.68,"country":"DE","place":"Frankfurt","precision":"city","relevance":0.7,"summary":"EZB hebt Zinsen an.","headline":"EZB hebt Leitzins an","topics":["ECB","Interest Rates","Eurozone Economy"]}]}',
       inputSchema: {
         items: z.array(locationItem).min(1).max(100),
         agentName: z
@@ -106,7 +105,7 @@ export const geonewsFeature: FeatureModule = {
           .max(40)
           .regex(/^[A-Za-z0-9._-]+$/)
           .optional()
-          .describe('Name des einreichenden Agenten, z.B. "fcNewsAgent" — wird als enrichedBy/locatedBy gespeichert (Fallback: Auth-Identität)'),
+          .describe('Name des einreichenden Agenten, z.B. "fcNewsAgent" — wird als enrichedBy gespeichert (Fallback: Auth-Identität)'),
       },
       requiredScope: 'write',
       annotations: { readOnlyHint: false, destructiveHint: false },
@@ -117,10 +116,7 @@ export const geonewsFeature: FeatureModule = {
         const c = cols(db);
         const ids = items.map((i) => new ObjectId(i.newsId));
         const newsDocs = await c.news
-          .find(
-            { _id: { $in: ids } },
-            { projection: { title: 1, sourceName: 1, link: 1, image: 1, pubDate: 1, category: 1 }, maxTimeMS: MAX_TIME_MS },
-          )
+          .find({ _id: { $in: ids } }, { projection: { enrichment: 1 }, maxTimeMS: MAX_TIME_MS })
           .toArray();
         const newsById = new Map(newsDocs.map((d) => [String(d._id), d]));
         const errors: string[] = [];
@@ -134,66 +130,29 @@ export const geonewsFeature: FeatureModule = {
             errors.push(`ERROR item ${i}: newsId ${item.newsId} not found in news`);
             continue;
           }
-          const base: Document = {
-            newsId: news._id,
-            title: news.title,
-            sourceName: news.sourceName,
-            link: news.link,
-            image: news.image ?? null,
-            pubDate: news.pubDate,
-            category: news.category,
-            locatedBy: enrichedBy,
-            locatedAt: new Date(),
-          };
-          let doc: Document;
-          if (item.noLocation) {
-            doc = { ...base, locatable: false };
-          } else {
-            if (item.lat == null || item.lon == null || !item.country || !item.precision || item.relevance == null) {
-              errors.push(`ERROR item ${i}: lat, lon, country, precision and relevance are required (or set noLocation)`);
-              continue;
-            }
-            doc = {
-              ...base,
-              locatable: true,
-              location: { type: 'Point', coordinates: [item.lon, item.lat] },
-              country: item.country.toUpperCase(),
-              ...(item.place ? { place: item.place } : {}),
-              precision: item.precision,
-              relevance: item.relevance,
-              ...(item.confidence != null ? { confidence: item.confidence } : {}),
-              ...(item.summary ? { summary: item.summary } : {}),
-              // eigenes Feld (nicht `title`): das newsGeo-Dokument hat bereits
-              // ein `title` mit dem Original-Artikeltitel (aus news denormalisiert,
-              // siehe `base` oben) — das würde sonst überschrieben.
-              ...(item.headline ? { geoTitle: item.headline } : {}),
-            };
+          if (
+            !item.noLocation &&
+            (item.lat == null || item.lon == null || !item.country || !item.precision || item.relevance == null)
+          ) {
+            errors.push(`ERROR item ${i}: lat, lon, country, precision and relevance are required (or set noLocation)`);
+            continue;
           }
-          const res = await c.newsGeo.replaceOne({ newsId: news._id }, doc, { upsert: true });
-          if (res.matchedCount > 0) updated++;
+          if (news.enrichment != null) updated++;
           if (item.noLocation) noLoc++;
           else located++;
           newsOps.push({
             updateOne: {
               filter: { _id: news._id },
-              update: {
-                $set: {
-                  // Top-Level-Denormalisierung: bleibt bis Phase 5 (webapi liest sie noch)
-                  ...buildNewsPatch(item, base.locatedAt as Date).$set,
-                  enrichment: buildEnrichment(item, enrichedBy, base.locatedAt as Date),
-                },
-              },
+              // Der Block wird als Ganzes ersetzt — ein Re-Submit überschreibt gewollt.
+              update: { $set: { enrichment: buildEnrichment(item, enrichedBy, new Date()) } },
             },
           });
         }
-        // Denormalisierung nach news: macht sortBy=relevance in der REST-API
-        // zu einem Index-Scan. Ein Fehlschlag hier darf die bereits
-        // geschriebenen newsGeo-Dokumente nicht entwerten — deshalb nur melden.
         if (newsOps.length > 0) {
           try {
             await c.news.bulkWrite(newsOps, { ordered: false });
           } catch (err) {
-            errors.push(`ERROR news denormalization failed: ${String(err)}`);
+            errors.push(`ERROR enrichment write failed: ${String(err)}`);
           }
         }
         log.info({ located, noLoc, updated, errors: errors.length, by: auth.keyName }, 'news locations submitted');
