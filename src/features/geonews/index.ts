@@ -50,7 +50,7 @@ export const geonewsFeature: FeatureModule = {
       name: 'get_news_for_geocoding',
       title: 'News pending geolocation',
       description:
-        'Newest news that have NO enrichment block yet — for the geolocation agent. Returns newsId (use it in submit_news_locations), date, category, source, title, description (truncated). Example: {"limit":20}',
+        'Newest news that have NO enrichment block yet (or only a partial fast-lane block from the hourly tagger) — for the geolocation agent. Returns newsId (use it in submit_news_locations), date, category, source, title, description (truncated). Example: {"limit":20}',
       inputSchema: {
         limit: z.number().int().min(1).max(50).optional().describe('default 20'),
         from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -61,7 +61,9 @@ export const geonewsFeature: FeatureModule = {
       annotations: { readOnlyHint: true },
       handler: async (input, { db }) => {
         const lim = Math.min(input.limit ?? 20, 50);
-        const match: Record<string, unknown> = { enrichment: { $exists: false } };
+        const match: Record<string, unknown> = {
+          $or: [{ enrichment: { $exists: false } }, { 'enrichment.partial': true }],
+        };
         if (input.from || input.to) {
           match.pubDate = {
             ...(input.from ? { $gte: new Date(`${input.from}T00:00:00Z`) } : {}),

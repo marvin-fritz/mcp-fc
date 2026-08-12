@@ -49,6 +49,24 @@ describe('get_news_for_geocoding', () => {
     expect(lines[1].split('|')[0]).toMatch(/^[a-f0-9]{24}$/);
     expect(text(res)).toContain('Test News 1 ¦ mit Pipe');
   });
+
+  it('bietet partial-enriched News weiter an, voll-enriched nicht', async () => {
+    const now = new Date();
+    const res = await db.collection('news').insertMany([
+      { title: 'Partial News', description: 'x', link: 'https://test.mcp-fc.local/p1',
+        sourceName: 'MCP-FC-Test', source: 'https://test.mcp-fc.local/', category: CAT,
+        pubDate: now, createdAt: now,
+        enrichment: { enrichedBy: 'aladinTagger', enrichedAt: now, relevance: 0.4, topics: ['DAX'], partial: true } },
+      { title: 'Full News', description: 'x', link: 'https://test.mcp-fc.local/f1',
+        sourceName: 'MCP-FC-Test', source: 'https://test.mcp-fc.local/', category: CAT,
+        pubDate: now, createdAt: now,
+        enrichment: { enrichedBy: 'test', enrichedAt: now, relevance: 0.4, geo: { locatable: false } } },
+    ]);
+    const out: any = await h.client.callTool({ name: 'get_news_for_geocoding', arguments: { category: CAT } });
+    expect(text(out)).toContain('Partial News');
+    expect(text(out)).not.toContain('Full News');
+    await db.collection('news').deleteMany({ _id: { $in: Object.values(res.insertedIds) } });
+  });
 });
 
 describe('submit_news_locations', () => {
