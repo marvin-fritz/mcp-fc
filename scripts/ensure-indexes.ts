@@ -40,5 +40,10 @@ await news.createIndex(
   { 'enrichment.topics': 1, pubDate: -1 },
   { name: 'enrichment_topics_pubDate' },
 );
+// Watchlist-Newsfeed (webapi): exakter ISIN-Match auf getaggte News
+await news.createIndex(
+  { 'enrichment.isins': 1, pubDate: -1 },
+  { name: 'enrichment_isins_pubDate' },
+);
 console.log('done');
 await closeMongo();
