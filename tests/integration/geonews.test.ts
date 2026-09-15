@@ -243,4 +243,33 @@ describe('submit_news_locations → enrichment-Block', () => {
     // Fallback ohne agentName: Auth-Key (hier 'test') — durch früheren Test belegt,
     // siehe "schreibt den vollen enrichment-Block" (enrichedBy 'test').
   });
+
+  it('übernimmt die isins des Fast-Lane-Taggers, wenn der Agent einen partial-Block vervollständigt', async () => {
+    const now = new Date();
+    const { insertedId } = await db.collection('news').insertOne({
+      title: 'Siemens hebt Prognose an', description: 'x', link: 'https://test.mcp-fc.local/isins',
+      sourceName: 'MCP-FC-Test', source: 'https://test.mcp-fc.local/', category: CAT,
+      pubDate: now, createdAt: now,
+      enrichment: {
+        enrichedBy: 'aladinTagger', enrichedAt: now, relevance: 0.5,
+        topics: ['Siemens'], partial: true, isins: ['DE0007236101'],
+      },
+    });
+    await h.client.callTool({
+      name: 'submit_news_locations',
+      arguments: {
+        agentName: 'fcNewsAgent',
+        items: [{
+          newsId: String(insertedId), lat: 48.14, lon: 11.58, country: 'DE', place: 'München',
+          precision: 'city', relevance: 0.6, topics: ['Siemens', 'DAX'],
+        }],
+      },
+    });
+    const doc: any = await db.collection('news').findOne({ _id: insertedId });
+    // Nur isins überleben — der Rest des partial-Blocks wird ersetzt.
+    expect(doc.enrichment.isins).toEqual(['DE0007236101']);
+    expect(doc.enrichment.partial).toBeUndefined();
+    expect(doc.enrichment.topics).toEqual(['Siemens', 'DAX']);
+    expect(doc.enrichment.enrichedBy).toBe('fcNewsAgent');
+  });
 });

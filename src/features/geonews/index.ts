@@ -50,7 +50,7 @@ export const geonewsFeature: FeatureModule = {
       name: 'get_news_for_geocoding',
       title: 'News pending geolocation',
       description:
-        'Newest news that have NO enrichment block yet (or only a partial fast-lane block from the hourly tagger) — for the geolocation agent. Returns newsId (use it in submit_news_locations), date, category, source, title, description (truncated). Example: {"limit":20}',
+        'Newest news that have NO enrichment block yet (or only a partial fast-lane block from the Aladin tagger) — for the geolocation agent. Returns newsId (use it in submit_news_locations), date, category, source, title, description (truncated). Example: {"limit":20}',
       inputSchema: {
         limit: z.number().int().min(1).max(50).optional().describe('default 20'),
         from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -145,8 +145,9 @@ export const geonewsFeature: FeatureModule = {
           newsOps.push({
             updateOne: {
               filter: { _id: news._id },
-              // Der Block wird als Ganzes ersetzt — ein Re-Submit überschreibt gewollt.
-              update: { $set: { enrichment: buildEnrichment(item, enrichedBy, new Date()) } },
+              // Der Block wird als Ganzes ersetzt — ein Re-Submit überschreibt gewollt;
+              // nur die isins des Fast-Lane-Taggers wandern mit (siehe buildEnrichment).
+              update: { $set: { enrichment: buildEnrichment(item, enrichedBy, new Date(), news.enrichment) } },
             },
           });
         }

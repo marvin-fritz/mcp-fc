@@ -57,4 +57,10 @@ describe('buildEnrichment', () => {
     const block = buildEnrichment({ noLocation: true }, 'fc-geo-agent', AT);
     expect(block).toEqual({ enrichedBy: 'fc-geo-agent', enrichedAt: AT, geo: { locatable: false } });
   });
+
+  it('schreibt kein isins-Feld, wenn der bisherige Block keine ISINs hat', () => {
+    const previous = { enrichedBy: 'aladinTagger', enrichedAt: AT, relevance: 0.4, topics: ['DAX'], partial: true };
+    const block = buildEnrichment({ noLocation: true, relevance: 0.5 }, 'fcNewsAgent', AT, previous);
+    expect(block).not.toHaveProperty('isins');
+  });
 });
