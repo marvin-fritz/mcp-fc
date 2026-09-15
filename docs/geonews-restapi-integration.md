@@ -15,12 +15,14 @@ MCP-Tool `submit_news_locations`); `newsGeo` wurde am 2026-08-12 gedroppt
 
 | Feld | Typ | Bedeutung |
 |---|---|---|
-| `enrichment` | object? | fehlt = noch nicht vom Agenten bearbeitet |
-| `enrichment.enrichedBy` / `enrichedAt` | str / date | Agent-Name (z.B. `fcNewsAgent`; ältere Docs: Auth-Identität/E-Mail) + Zeitstempel |
+| `enrichment` | object? | fehlt = noch von niemandem bearbeitet (weder Tagger noch Agent) |
+| `enrichment.enrichedBy` / `enrichedAt` | str / date | Agent-Name (z.B. `fcNewsAgent`, bei partial-Blöcken `aladinTagger`; ältere Docs: Auth-Identität/E-Mail) + Zeitstempel |
 | `enrichment.relevance` | float? | 0–1 — Bedeutung des EREIGNISSES (auch ohne Ort gesetzt) |
 | `enrichment.headline` | str? | kurze deutsche Schlagzeile (≤90 Zeichen, ehem. `geoTitle`) |
 | `enrichment.summary` | str? | 1–2 Sätze (Pin-Callout / Teaser) |
 | `enrichment.topics` | [str]? | 1–8 Themen-Tags, Englisch, Title Case (`"US Economy"`, `"DAX"`, auch Personen: `"Zohran Mamdani"`) |
+| `enrichment.isins` | [str]? | ISINs der materiell betroffenen Unternehmen. Ermittelt nur der Aladin-Fast-Lane-Tagger (Firmenname → stockIndex); `submit_news_locations` übernimmt sie beim Ersetzen des Blocks. Basis des Watchlist-Newsfeeds |
+| `enrichment.partial` | bool? | `true` = nur Fast-Lane-Block des Aladin-Taggers (`topics`, `relevance`, ggf. `isins`; kein `geo`, keine `headline`/`summary`). Der Geo-Agent ersetzt ihn durch den vollen Block |
 | `enrichment.geo.locatable` | bool | `false` = kein sinnvoller Ort (**für die Karte filtern!**) |
 | `enrichment.geo.location` | GeoJSON Point | `[lon, lat]` — Reihenfolge beachten |
 | `enrichment.geo.country` | str? | ISO 3166-1 alpha-2, uppercase |
@@ -48,12 +50,19 @@ Indizes (via mcp-fc `ensure-indexes` / `scripts/ensure-indexes.ts` angelegt):
 `enrichment_location_2dsphere` auf `enrichment.geo.location` (sparse),
 `enrichment_relevance_pubDate` auf `{'enrichment.relevance':-1, pubDate:-1}`,
 `enrichment_country_pubDate` auf `{'enrichment.geo.country':1, pubDate:-1}`,
-`enrichment_topics_pubDate` auf `{'enrichment.topics':1, pubDate:-1}`.
+`enrichment_topics_pubDate` auf `{'enrichment.topics':1, pubDate:-1}`,
+`enrichment_isins_pubDate` auf `{'enrichment.isins':1, pubDate:-1}`.
 Viewport- und Top-Stories-Queries laufen also ohne weitere Vorbereitung über
 einen Index.
 
-Befüllung: täglich 8:00 Uhr durch den Geo-Agenten (Claude-Scheduled-Task) —
-die Daten sind **nicht** realtime; `enrichment.enrichedAt` zeigt die Aktualität.
+Befüllung in zwei Stufen (Stand 2026-09-15): Der Aladin-Fast-Lane-Tagger
+schreibt alle 5 min einen partial-Block (`topics`, `relevance`, ggf. `isins`)
+an neue News. Der Geo-Agent (Claude-Scheduled-Task `fc_news_agent`) läuft
+stündlich, übernimmt bis zu 100 News pro Lauf (~2.400/Tag, neueste zuerst,
+partial-Blöcke eingeschlossen) und ersetzt den Block durch den vollen; die
+`isins` bleiben dabei erhalten. News jenseits seiner Kapazität behalten den
+partial-Block. Karten-Daten (`geo`) sind also bis zu einer Stunde alt;
+`enrichment.enrichedAt` zeigt die Aktualität.
 
 > **Achtung bei neuen Feldern:** Der Agent ist eine Scheduled-Task mit eigenem
 > Auftragstext, der außerhalb dieses Repos liegt. Ein Feld im Tool-Schema
@@ -454,15 +463,18 @@ marker.glyphImage = item.relevance >= 0.9 ? UIImage(systemName: "exclamationmark
   kleinere Payloads, lesbarere Karte. `/news-geo/top` läuft rein über den
   `enrichment_relevance_pubDate`-Index (`{'enrichment.relevance':-1, pubDate:-1}`,
   kein Geo-Scan).
-- Daten ändern sich nur beim Agenten-Lauf (täglich 8:00): ein kurzer
+- Karten-Daten ändern sich nur beim Agenten-Lauf (stündlich), Topics und
+  isins zusätzlich alle 5 min durch den Aladin-Tagger: ein kurzer
   Response-Cache (60–300 s, z.B. `fastapi-cache` oder CDN-Header
   `Cache-Control: public, max-age=120`) eliminiert praktisch alle DB-Last.
-- Die API braucht **keinen** Schreibzugriff auf `news` — Schreibweg ist
-  ausschließlich MCP (`submit_news_locations`, Scope `write`).
-- Monitoring-Idee: Alter von `max(news.enrichment.enrichedAt)` als Health-Signal
-  — ist es > 48 h, läuft der Geo-Agent nicht (Desktop-App war zu / Task
-  deaktiviert). Health-Signal ist jetzt `max(news.enrichment.enrichedAt)` statt
-  `max(newsGeo.locatedAt)`.
+- Die API braucht **keinen** Schreibzugriff auf `news` — Schreibwege sind
+  MCP (`submit_news_locations`, Scope `write`) und der Aladin-Tagger, der
+  partial-Blöcke direkt in Mongo schreibt.
+- Monitoring-Idee: Alter des jüngsten `enrichment.enrichedAt` mit
+  `enrichment.enrichedBy: 'fcNewsAgent'` als Health-Signal — ist es > 2 h,
+  läuft der Geo-Agent nicht (Task deaktiviert / Connector getrennt). Ein
+  ungefiltertes `max(news.enrichment.enrichedAt)` taugt dafür nicht mehr, weil
+  der Tagger es alle 5 min fortschreibt.
 
 ## 8. Smoke-Test nach Einbau
 
