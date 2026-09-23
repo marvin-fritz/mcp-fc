@@ -168,14 +168,15 @@ export function telemetryLoggerOptions({ service, level, logger = 'mcp-fc', coun
       level: (label) => ({ level: LEVEL_NAMES[label] ?? label.toUpperCase() }),
       log: (obj) => toTelemetryFields(obj),
     },
-    hooks: counter
-      ? {
-          logMethod(args, method, levelNumber) {
-            counter.record(levelNumber);
-            return method.apply(this, args);
-          },
-        }
-      : undefined,
+    // pino rejects `hooks: undefined` (it replaces the defaults) — only set the key when counting.
+    ...(counter && {
+      hooks: {
+        logMethod(args, method, levelNumber) {
+          counter.record(levelNumber);
+          return method.apply(this, args);
+        },
+      },
+    }),
   };
 }
 ```
