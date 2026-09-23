@@ -6,6 +6,7 @@ import pino from 'pino';
 import { z } from 'zod';
 import { createMcpServer } from '../../src/mcp.js';
 import { ToolError, type FeatureModule } from '../../src/features/types.js';
+import { JobTracker } from '../../src/telemetry/jobs.js';
 
 const fake: FeatureModule = {
   name: 'fake',
@@ -81,5 +82,51 @@ describe('createMcpServer registry', () => {
     const res: any = await client.callTool({ name: 'write_thing', arguments: {} });
     expect(res.isError).toBe(true);
     expect(res.content[0].text).toMatch(/scope 'write'/);
+  });
+});
+
+describe('tool calls as telemetry jobs', () => {
+  it('tracks running tool calls and records unexpected failures only', async () => {
+    const jobs = new JobTracker();
+    const seen: string[][] = [];
+    const tool = (name: string, handler: () => Promise<string>) => ({
+      name,
+      title: name,
+      description: name,
+      inputSchema: {},
+      requiredScope: 'read' as const,
+      annotations: { readOnlyHint: true },
+      handler,
+    });
+    const feature: FeatureModule = {
+      name: 'jobs',
+      tools: [
+        tool('observe', async () => {
+          seen.push(jobs.state().current);
+          return 'ok';
+        }),
+        tool('crash', async () => {
+          throw new Error('db down');
+        }),
+        tool('user_error', async () => {
+          throw new ToolError('nothing found');
+        }),
+      ],
+    };
+    const server = createMcpServer({ db: {} as Db, log: pino({ level: 'silent' }), jobs }, { keyName: 'test', scopes: new Set(['read']) }, [feature]);
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    const client = new Client({ name: 'test', version: '0.0.0' });
+    await client.connect(clientTransport);
+    try {
+      await client.callTool({ name: 'observe', arguments: {} });
+      await client.callTool({ name: 'crash', arguments: {} });
+      await client.callTool({ name: 'user_error', arguments: {} });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+    expect(seen).toEqual([['observe']]);
+    expect(jobs.state()).toMatchObject({ current: [], errorsTotal: 1, lastError: { job: 'crash', type: 'Error', message: 'db down' } });
   });
 });

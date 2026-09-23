@@ -19,6 +19,8 @@ export interface Config {
   jwtSecret: string | null;
   /** MongoDB database for OAuth artifacts (clients/codes/refresh tokens). */
   mongoAuthDb: string;
+  /** Heartbeat + command monitoring per fc-telemetry contract; off with FC_TELEMETRY=off. */
+  telemetry: boolean;
 }
 
 const VALID_SCOPES: ReadonlySet<string> = new Set(['read', 'write']);
@@ -56,5 +58,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     publicUrl: (env.MCP_PUBLIC_URL ?? `http://localhost:${port}`).replace(/\/$/, ''),
     jwtSecret: env.MCP_JWT_SECRET || null,
     mongoAuthDb: env.MONGODB_AUTH_DB ?? 'mcp-fc',
+    telemetry: env.FC_TELEMETRY !== 'off',
   };
 }

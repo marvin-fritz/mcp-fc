@@ -31,6 +31,11 @@ describe('loadConfig', () => {
     expect(() => loadConfig({})).toThrow(/MCP_API_KEYS/);
     expect(loadConfig({ MCP_AUTH_DISABLED: 'true' }).authDisabled).toBe(true);
   });
+
+  it('enables telemetry unless FC_TELEMETRY=off', () => {
+    expect(loadConfig({ MCP_AUTH_DISABLED: 'true' }).telemetry).toBe(true);
+    expect(loadConfig({ MCP_AUTH_DISABLED: 'true', FC_TELEMETRY: 'off' }).telemetry).toBe(false);
+  });
 });
 
 describe('loadConfig oauth fields', () => {
