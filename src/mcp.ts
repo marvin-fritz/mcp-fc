@@ -4,10 +4,13 @@ import type { Logger } from 'pino';
 import type { AuthContext } from './auth/apiKey.js';
 import { allFeatures } from './features/index.js';
 import { ToolError, type FeatureModule } from './features/types.js';
+import type { JobTracker } from './telemetry/jobs.js';
 
 export interface Deps {
   db: Db;
   log: Logger;
+  /** Telemetry: running tool calls count as jobs. */
+  jobs?: JobTracker;
 }
 
 const errResult = (msg: string) => ({
@@ -33,6 +36,7 @@ export function createMcpServer(deps: Deps, auth: AuthContext, features: Feature
             return errResult(`key '${auth.keyName}' lacks scope '${tool.requiredScope}' required by ${tool.name}`);
           }
           const start = Date.now();
+          const endJob = deps.jobs?.start(tool.name);
           try {
             const text = await tool.handler(input, { db: deps.db, auth, log: deps.log });
             deps.log.info({ tool: tool.name, key: auth.keyName, ms: Date.now() - start }, 'tool ok');
@@ -42,8 +46,11 @@ export function createMcpServer(deps: Deps, auth: AuthContext, features: Feature
               deps.log.warn({ tool: tool.name, key: auth.keyName, ms: Date.now() - start, err: e.message }, 'tool error');
               return errResult(e.message);
             }
+            deps.jobs?.recordError(tool.name, e);
             deps.log.error({ tool: tool.name, key: auth.keyName, err: e }, 'tool failed');
             return errResult('internal error — retry or narrow the query');
+          } finally {
+            endJob?.();
           }
         },
       );

@@ -13,11 +13,13 @@ import { AuthStore } from './auth/oauth/store.js';
 import { makeLoginRouter } from './auth/oauth/loginRoute.js';
 import { connectMongo, getDb } from './db/client.js';
 import { createMcpServer, type Deps } from './mcp.js';
+import { createTelemetry, startHeartbeat, telemetryLoggerOptions, TELEMETRY_SERVICE, type HttpStats } from './telemetry/index.js';
 
-export function buildApp(config: Config, deps: Deps, authDb?: Db): express.Express {
+export function buildApp(config: Config, deps: Deps, authDb?: Db, http?: HttpStats): express.Express {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 'loopback');
+  if (http) app.use(http.middleware());
   app.use(express.json({ limit: '1mb' }));
 
   let provider: McpOAuthProvider | null = null;
@@ -73,8 +75,9 @@ export function buildApp(config: Config, deps: Deps, authDb?: Db): express.Expre
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const log = pino({ level: config.logLevel });
-  const client = await connectMongo(config);
+  const telemetry = config.telemetry ? createTelemetry() : null;
+  const log = pino(telemetryLoggerOptions({ service: TELEMETRY_SERVICE, level: config.logLevel, counter: telemetry?.logCounter }));
+  const client = await connectMongo(config, telemetry?.activity);
   const db = await getDb(config);
   let authDb: Db | undefined;
   if (config.jwtSecret) {
@@ -82,8 +85,11 @@ async function main(): Promise<void> {
     await new AuthStore(authDb).ensureIndexes();
     log.info({ issuer: config.publicUrl }, 'oauth enabled');
   }
-  const app = buildApp(config, { db, log }, authDb);
+  const app = buildApp(config, { db, log, jobs: telemetry?.jobs }, authDb, telemetry?.http);
   app.listen(config.port, () => log.info(`mcp-fc listening on :${config.port}`));
+  if (telemetry) {
+    startHeartbeat(telemetry, { mongoUri: config.mongoUri, database: config.mongoDb, onWarn: (message) => log.warn(message) });
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
