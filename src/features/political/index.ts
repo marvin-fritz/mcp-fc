@@ -162,7 +162,7 @@ export const politicalFeature: FeatureModule = {
         party: z.enum(['R', 'D', 'I']).optional().describe('party of the politician'),
         state: z.string().regex(/^[A-Za-z]{2}$/).optional().describe('two-letter US state, e.g. CA'),
         transactionType: z.enum(['P', 'S', 'SP', 'E']).optional().describe('P=purchase, S=sale, SP=partial sale, E=exchange'),
-        owner: z.string().min(1).optional().describe('owner as disclosed, e.g. self, spouse, joint, dependent'),
+        owner: z.enum(['self', 'SP', 'JT', 'DC']).optional().describe('owner: self, SP=spouse, JT=joint, DC=dependent child'),
         assetType: z.string().min(1).optional().describe('e.g. stock, option'),
         from: z.string().regex(DATE_RE).optional().describe('min transaction date YYYY-MM-DD'),
         to: z.string().regex(DATE_RE).optional().describe('max transaction date YYYY-MM-DD'),
@@ -192,8 +192,13 @@ export const politicalFeature: FeatureModule = {
             idLabel = upper;
           } else {
             const ref = await resolveSecurity(db, input.identifier);
-            if (ref) match.isin = idLabel = ref.isin;
-            else match.ticker = idLabel = upper;
+            if (ref) {
+              // Trades ohne ISIN (Auflösung fehlgeschlagen) tragen oft trotzdem den Ticker.
+              idLabel = ref.isin;
+              match.$or = ref.ticker ? [{ isin: ref.isin }, { ticker: ref.ticker }] : [{ isin: ref.isin }];
+            } else {
+              match.ticker = idLabel = upper;
+            }
           }
         }
         if (input.chamber) match.chamber = input.chamber;
