@@ -19,11 +19,12 @@ export const politicalFeature: FeatureModule = {
       name: 'get_political_trades',
       title: 'Congressional trades',
       description:
-        'Stock trades disclosed by US Congress members, ordered by filing date desc. transactionType codes: P=purchase, S=sale, SP=partial sale, EX=exchange. amount is the disclosed range. Example: {"politician":"Pelosi"} or {"identifier":"NVDA","chamber":"house"}',
+        'Stock trades disclosed by US Congress members, ordered by filing date desc. transactionType codes: P=purchase, S=sale, SP=partial sale, E=exchange. amount is the disclosed range. assetType distinguishes stock and option lines of the same trade. Example: {"politician":"Pelosi"} or {"identifier":"NVDA","chamber":"house"}',
       inputSchema: {
         politician: z.string().optional().describe('politician name substring'),
         identifier: z.string().optional().describe('stock ISIN, ticker or name'),
         chamber: z.enum(['house', 'senate']).optional(),
+        party: z.enum(['R', 'D', 'I']).optional().describe('party of the politician at filing time'),
         from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('min filingDate'),
         limit: z.number().int().min(1).optional().describe('default 25, max 100'),
       },
@@ -39,6 +40,7 @@ export const politicalFeature: FeatureModule = {
         const match: Record<string, unknown> = { parseStatus: 'parsed' };
         if (input.politician) match['filer.fullName'] = { $regex: escapeRegex(input.politician), $options: 'i' };
         if (input.chamber) match.chamber = input.chamber;
+        if (input.party) match['filer.party'] = input.party;
         if (input.from) match.filingDate = { $gte: input.from };
         if (ticker) match['trades.ticker'] = ticker;
         const rows = await cols(db)
@@ -54,9 +56,11 @@ export const politicalFeature: FeatureModule = {
                   filingDate: 1,
                   chamber: 1,
                   name: '$filer.fullName',
+                  party: '$filer.party',
                   txDate: '$trades.transactionDate',
                   ticker: '$trades.ticker',
                   asset: '$trades.asset',
+                  assetType: '$trades.assetType',
                   type: '$trades.transactionType',
                   low: '$trades.amountRangeLow',
                   high: '$trades.amountRangeHigh',
@@ -74,14 +78,16 @@ export const politicalFeature: FeatureModule = {
         }
         const hasMore = rows.length > lim;
         return table(
-          ['txDate', 'filed', 'politician', 'chamber', 'ticker', 'asset', 'type', 'amount', 'owner'],
+          ['txDate', 'filed', 'politician', 'party', 'chamber', 'ticker', 'asset', 'assetType', 'type', 'amount', 'owner'],
           rows.slice(0, lim).map((r) => [
             r.txDate,
             r.filingDate,
             r.name,
+            r.party,
             r.chamber,
             r.ticker,
             typeof r.asset === 'string' ? r.asset.slice(0, 40) : r.asset,
+            r.assetType,
             r.type,
             fmtAmount(r.low, r.high, r.exact),
             r.owner,
