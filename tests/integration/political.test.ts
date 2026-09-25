@@ -39,4 +39,26 @@ describe('get_political_trades', () => {
     expect(lines.length).toBeGreaterThan(1);
     for (const row of lines.slice(1)) expect(row.split('|')[3]).toBe('D');
   });
+
+  it('throws a descriptive error naming the single active filter when nothing matches', async () => {
+    const res: any = await h.client.callTool({
+      name: 'get_political_trades',
+      arguments: { from: '2099-01-01' },
+    });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain("from '2099-01-01'");
+  });
+
+  it('throws a descriptive error naming all active filters when nothing matches', async () => {
+    const res: any = await h.client.callTool({
+      name: 'get_political_trades',
+      arguments: { politician: 'Zzzznonexistentname', chamber: 'house', party: 'I', from: '2099-01-01' },
+    });
+    expect(res.isError).toBe(true);
+    const msg = text(res);
+    expect(msg).toContain("politician 'Zzzznonexistentname'");
+    expect(msg).toContain("chamber 'house'");
+    expect(msg).toContain("party 'I'");
+    expect(msg).toContain("from '2099-01-01'");
+  });
 });

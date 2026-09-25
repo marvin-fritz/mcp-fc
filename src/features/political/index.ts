@@ -73,8 +73,19 @@ export const politicalFeature: FeatureModule = {
             { maxTimeMS: MAX_TIME_MS },
           )
           .toArray();
-        if (rows.length === 0 && input.politician) {
-          throw new ToolError(`no parsed filings match politician '${input.politician}'`);
+        if (rows.length === 0) {
+          const activeFilters: string[] = [];
+          if (input.politician) activeFilters.push(`politician '${input.politician}'`);
+          if (input.identifier) activeFilters.push(`identifier '${ticker ?? input.identifier}'`);
+          if (input.chamber) activeFilters.push(`chamber '${input.chamber}'`);
+          if (input.party) activeFilters.push(`party '${input.party}'`);
+          if (input.from) activeFilters.push(`from '${input.from}'`);
+          // No filters set: an empty table is a legitimate (if unlikely) answer.
+          // Any filter set: a bare empty table is more likely a typo/mismatch,
+          // so name every active filter to help the agent correct the call.
+          if (activeFilters.length > 0) {
+            throw new ToolError(`no parsed filings match ${activeFilters.join(', ')}`);
+          }
         }
         const hasMore = rows.length > lim;
         return table(
