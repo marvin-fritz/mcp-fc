@@ -11,6 +11,9 @@ export function cols(db: Db) {
     f13Filings: db.collection('f13Filings'),
     funds: db.collection('funds'),
     politicalFilings: db.collection('politicalFilings'),
+    /** Flat congressional trades and politician master data (written by Kraken, read-only here). */
+    politicalTrades: db.collection('politicalTrades'),
+    politicians: db.collection('politicians'),
     fred: db.collection('fred'),
     economicIndicators: db.collection('economicIndicators'),
     news: db.collection('news'),

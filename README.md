@@ -15,7 +15,14 @@ Streamable HTTP (stateless), scoped API keys, token-efficient pipe-table output.
 
 search_securities · get_security_snapshot · screen_stocks · get_price_history ·
 get_financials · get_insider_trades · search_funds · get_fund_holdings ·
-get_political_trades · get_macro_series · search_news · get_news_for_geocoding
+get_political_trades · get_politician_profile · get_congress_flow ·
+get_macro_series · search_news · get_news_for_geocoding
+
+Congress tools read `politicalTrades` / `politicians` (written by Kraken).
+Amounts are disclosed ranges, shown as bands (`$1.0M-$5.0M`, open class
+`≥$50.0M`); buys = P, sells = S/SP, `E` (exchange) counts for neither side;
+amended originals are hidden. `get_security_snapshot` adds 90-day congress
+lines (`congressTrades90d`, `congressNet90d`, `congressLastTrade`).
 
 Write tools (scope `write`): submit_news_locations
 

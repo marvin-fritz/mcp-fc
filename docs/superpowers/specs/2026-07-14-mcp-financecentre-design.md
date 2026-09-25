@@ -72,7 +72,7 @@ src/
     ├── financials/        # get_financials
     ├── insider/           # get_insider_trades
     ├── funds/             # search_funds, get_fund_holdings
-    ├── political/         # get_political_trades
+    ├── political/         # get_political_trades, get_politician_profile, get_congress_flow (+ amounts.ts: Spannen/Fenster)
     ├── macro/             # get_macro_series
     └── news/              # search_news
 ```
@@ -113,14 +113,16 @@ Gemeinsame Regeln:
 | Tool | Quelle | Parameter | Deckel |
 |---|---|---|---|
 | `search_securities` | stockIndex | `query` (Name-Substring, Ticker oder ISIN), `limit` | 50 |
-| `get_security_snapshot` | stockIndex + stockMetrics + stockPrices (letzter Trade) | `isin` | – |
+| `get_security_snapshot` | stockIndex + stockMetrics + stockPrices (letzter Trade) + politicalTrades (90 Tage, ohne ersetzte) | `isin` | – |
 | `get_price_history` | stockPrices (Aggregation → OHLC) | `isin`, `from`, `to`, `interval: day\|week\|month` (default day) | 400 Kerzen; darüber Fehler mit Hinweis auf gröberes Intervall |
 | `screen_stocks` | stockMetrics | `sector?`, `industryGroup?`, `index?`, `country?`, `marketCapMin/Max?`, `sortBy` (return1D…return1Y, returnYTD, marketCap, rangePosition52w), `order`, `limit` | 100 |
 | `get_financials` | secFinancials | `identifier` (ISIN oder Ticker), `statements?` ⊆ {income,balance,cashflow} (default alle), `period: annual\|quarterly` (default annual), `periods` (Anzahl, default 4) | 12 Perioden |
 | `get_insider_trades` | insiderTrades | `isin?` (sonst marktweit), `from?`, `to?`, `minAmount?`, `transactionType?`, `limit` | 100 |
 | `search_funds` | funds | `query` (Name-Substring oder CIK), `limit` | 50 |
 | `get_fund_holdings` | f13Filings (+funds) | entweder `fund` (CIK oder Name) → Holdings des letzten Filings, oder `isin` → Top-Holder; `period?`, `limit` | 200 |
-| `get_political_trades` | politicalFilings ($unwind trades) | `politician?` (Name-Substring), `ticker?`, `chamber?`, `from?`, `limit` | 100 |
+| `get_political_trades` | politicalTrades (+politicians für Namen → Bioguide-ID); ersetzte Originale ausgeblendet | `politician?` (Name-Teil oder Bioguide-ID), `identifier?` (ISIN, sonst über stockIndex → ISIN, Fallback Ticker), `chamber?`, `party?`, `state?`, `transactionType?` (P/S/SP/E), `owner?`, `assetType?`, `from?`/`to?` (Handelsdatum), `limit` | 100 |
+| `get_politician_profile` | politicians + politicalTrades (Aggregation) | `politician` (Name-Teil oder Bioguide-ID; mehrdeutig → Kandidatenliste), `window` (90d\|ytd\|1y\|all, default all, Handelsdatum) | Top 10 Titel |
+| `get_congress_flow` | politicalTrades (Aggregation, ohne `quality.dateSuspect`) | `window` (default 90d, Veröffentlichungsdatum), `chamber?`, `party?`, `limit` (default 10) | 50 je Liste |
 | `get_macro_series` | fred + economicIndicators | ohne `seriesId` → Katalog (id, name, unit, freq, category); mit `seriesId` → Observations `from?`/`to?` | 500 Observations |
 | `search_news` | news ($text) | `query`, `from?`, `to?`, `source?`, `category?`, `limit` | 50 |
 
@@ -137,6 +139,10 @@ Bewusst nicht in v1: `topicTrends`, `insiderAnalysis`, `fundsAnalysis`, `newsSou
 - `get_fund_holdings` (per Fund): `issuer|isin|value(USDk)|shares|pct` sortiert nach
   value desc, Kopf nennt reportPeriod und Portfoliowert.
 - `search_news`: `date|source|title|link`; `description` nur auf Anfrage via `fields`.
+- Kongress-Tools: Beträge immer als Spanne (`$1.0M-$5.0M`, offene Klasse `≥$50.0M`, 0 → `—`);
+  `amountExact` schlägt die Klasse, Käufe = P, Verkäufe = S/SP, `E` (Tausch) zählt nicht;
+  Netto = [KaufLow − VerkaufHigh, KaufHigh − VerkaufLow] (identisch zu webapi `congress_calc.py`).
+  `get_political_trades`: `txDate|published|lagDays|politician|bioguideId|party|chamber|ticker|isin|asset|assetType|type|amount|owner|late`.
 
 ## Token-effizientes Ausgabeformat
 
@@ -164,8 +170,8 @@ Bewusst nicht in v1: `topicTrends`, `insiderAnalysis`, `fundsAnalysis`, `newsSou
   `stockPrices {isin, tradeTime}` / `{isin, tradeDateOnly}`,
   `insiderTrades {isin, transactionDate}` / `{transactionDate}` / `{totalAmount}`,
   `secFinancials {cik, filingType, periodEnd}`, `f13Filings {cik, reportPeriod}` /
-  `{holdings.isin}`, `politicalFilings {filer.fullName, filingDate}` /
-  `{trades.ticker, filingDate}`, `stockIndex {isin} {ticker} {name}`,
+  `{holdings.isin}`, `politicalTrades {bioguideId|isin|ticker|sector, transactionDate}` /
+  `{publishedAt}` (von Kraken angelegt), `stockIndex {isin} {ticker} {name}`,
   `news {pubDate}` u.a.
 - **Neu anzulegen**: Text-Index auf `news {title, description}` für `search_news`
   (additiv, einmalig bei Implementierung).

@@ -156,3 +156,38 @@ export function amountAccumulators(): Record<string, unknown> {
     lateKnown: { $sum: '$_lateKnown' },
   };
 }
+
+/** Amended originals (supersededBy set) are replaced by their correction and never count. */
+export function notSuperseded(): Record<string, unknown> {
+  return { supersededBy: { $exists: false } };
+}
+
+/** Buy or sell side of a grouped row as band. */
+export function sideBand(row: Row, s: 'buy' | 'sell'): Required<Band> {
+  return { low: n(row, `${s}Low`), high: n(row, `${s}High`), highOpen: b(row, `${s}Open`), lowOpen: false };
+}
+
+// ── Trade formatting ────────────────────────────────────────────────
+
+export interface OptionInfo {
+  action?: string | null;
+  contracts?: number | null;
+  callPut?: string | null;
+  strike?: number | null;
+  expiry?: Date | string | null;
+}
+
+/** Short option description: "call @120 exp 2026-01-17 x10 buy". */
+export function fmtOption(o: OptionInfo | null | undefined): string {
+  if (!o) return '';
+  const expiry = o.expiry instanceof Date ? o.expiry.toISOString().slice(0, 10) : o.expiry ? String(o.expiry).slice(0, 10) : null;
+  return [
+    o.callPut ? o.callPut.toLowerCase() : null,
+    o.strike != null ? `@${o.strike}` : null,
+    expiry ? `exp ${expiry}` : null,
+    o.contracts != null ? `x${o.contracts}` : null,
+    o.action ? o.action.toLowerCase() : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}

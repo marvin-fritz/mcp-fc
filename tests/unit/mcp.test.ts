@@ -63,6 +63,18 @@ describe('createMcpServer registry', () => {
     expect(tools.tools.map((t) => t.name).sort()).toEqual(['boom', 'echo', 'write_thing']);
   });
 
+  it('registers the congress tools of the default feature set', async () => {
+    const server = createMcpServer({ db: {} as Db, log: pino({ level: 'silent' }) }, { keyName: 'test', scopes: new Set(['read']) });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    await server.connect(st);
+    const client = new Client({ name: 't', version: '0' });
+    await client.connect(ct);
+    const names = (await client.listTools()).tools.map((t) => t.name);
+    expect(names).toEqual(expect.arrayContaining(['get_political_trades', 'get_politician_profile', 'get_congress_flow', 'get_security_snapshot']));
+    await client.close();
+    await server.close();
+  });
+
   it('runs a handler and wraps result as text content', async () => {
     const client = await connect(['read']);
     const res: any = await client.callTool({ name: 'echo', arguments: { msg: 'hi' } });

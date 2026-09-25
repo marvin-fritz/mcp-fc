@@ -5,6 +5,7 @@ import { ISIN_RE, escapeRegex, resolveSecurity } from '../../db/identifiers.js';
 import { kv } from '../../format/kv.js';
 import { fmtDateTime, fmtMillions, fmtNum, fmtPct } from '../../format/num.js';
 import { table } from '../../format/table.js';
+import { congressSnapshot } from '../political/index.js';
 import { ToolError, type FeatureModule } from '../types.js';
 
 const SORT_FIELDS: Record<string, string> = {
@@ -68,7 +69,7 @@ export const securitiesFeature: FeatureModule = {
       name: 'get_security_snapshot',
       title: 'Security snapshot',
       description:
-        'Compact profile of one security: master data, last trade price, marketCap (USD millions), returns (1D/1M/3M/6M/1Y/YTD in %), 52-week range position. identifier = ISIN, ticker or name. Example: {"identifier":"AAPL"}',
+        'Compact profile of one security: master data, last trade price, marketCap (USD millions), returns (1D/1M/3M/6M/1Y/YTD in %), 52-week range position; if US Congress members traded it in the last 90 days (transaction date): congressTrades90d (trades, buys, sells, politicians), congressNet90d (net buy − sell as disclosed range band, not an exact value) and congressLastTrade (date, politician, type P/S/SP/E). identifier = ISIN, ticker or name. Example: {"identifier":"AAPL"}',
       inputSchema: {
         identifier: z.string().min(1).describe('ISIN, ticker or name'),
       },
@@ -78,7 +79,7 @@ export const securitiesFeature: FeatureModule = {
         const ref = await resolveSecurity(db, input.identifier);
         if (!ref) throw new ToolError(`unknown identifier '${input.identifier}' — use search_securities`);
         const c = cols(db);
-        const [idx, met, last] = await Promise.all([
+        const [idx, met, last, congress] = await Promise.all([
           c.stockIndex.findOne(
             { isin: ref.isin },
             { projection: { 'classification.sector': 1, 'classification.industryGroup': 1, indices: 1, exchangeCode: 1 }, maxTimeMS: MAX_TIME_MS },
@@ -88,6 +89,7 @@ export const securitiesFeature: FeatureModule = {
             .find({ isin: ref.isin }, { projection: { price: 1, currency: 1, tradeTime: 1, source: 1 }, sort: { tradeTime: -1 }, limit: 1, maxTimeMS: MAX_TIME_MS })
             .toArray()
             .then((a) => a[0]),
+          congressSnapshot(db, ref.isin),
         ]);
         const m = (met?.metrics ?? {}) as Record<string, unknown>;
         const rets = (
@@ -116,6 +118,7 @@ export const securitiesFeature: FeatureModule = {
           ['lastPrice', last ? `${fmtNum(last.price)} ${last.currency} (${fmtDateTime(last.tradeTime)}, ${last.source})` : null],
           ['returns', rets || null],
           ['52wRangePos', m.rangePosition52w == null ? null : fmtPct(m.rangePosition52w)],
+          ...congress,
           ['metricsAsOf', met?.dataAsOf],
         ]);
       },

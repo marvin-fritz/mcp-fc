@@ -5,11 +5,14 @@ import {
   amountStage,
   bandMid,
   fmtBand,
+  fmtOption,
   fmtTradeAmount,
   fmtUsd,
   medianOf,
   netBand,
+  notSuperseded,
   politicianCount,
+  sideBand,
   volumeBand,
   windowStart,
 } from '../../src/features/political/amounts.js';
@@ -153,5 +156,29 @@ describe('amountStage / amountAccumulators', () => {
     );
     expect(acc.buyLow).toEqual({ $sum: { $cond: [{ $eq: ['$_side', 'buy'] }, '$_lo', 0] } });
     expect(acc.sellHigh).toEqual({ $sum: { $cond: [{ $eq: ['$_side', 'sell'] }, '$_hi', 0] } });
+  });
+});
+
+describe('sideBand / notSuperseded', () => {
+  it('sideBand picks one side of a grouped row', () => {
+    const row = { buyLow: 1, buyHigh: 2, buyOpen: true, sellLow: 3, sellHigh: 4 };
+    expect(sideBand(row, 'buy')).toEqual({ low: 1, high: 2, highOpen: true, lowOpen: false });
+    expect(sideBand(row, 'sell')).toEqual({ low: 3, high: 4, highOpen: false, lowOpen: false });
+  });
+
+  it('notSuperseded hides amended originals', () => {
+    expect(notSuperseded()).toEqual({ supersededBy: { $exists: false } });
+  });
+});
+
+describe('fmtOption', () => {
+  it('renders a compact option description', () => {
+    expect(fmtOption({ action: 'Buy', contracts: 10, callPut: 'CALL', strike: 120, expiry: new Date('2027-01-15T00:00:00Z') }))
+      .toBe('call @120 exp 2027-01-15 x10 buy');
+  });
+
+  it('skips missing parts and empty options', () => {
+    expect(fmtOption({ callPut: 'put' })).toBe('put');
+    expect(fmtOption(null)).toBe('');
   });
 });
