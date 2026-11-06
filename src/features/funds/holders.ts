@@ -6,6 +6,14 @@ import type { Document } from 'mongodb';
  */
 export const ACTIVE = { supersededBy: null } as const;
 
+/**
+ * Time budget of the holders aggregation only (the global MAX_TIME_MS is 5 s). It has to read
+ * every active filing of the period that holds the security, each with all embedded holdings:
+ * for AAPL that is ~6,000 of ~9,000 filings per quarter, measured 1.7–6.4 s on prod
+ * (2026-11-06). An index hint does not help — `holdings.cusip` alone spans all periods.
+ */
+export const HOLDERS_MAX_TIME_MS = 25_000;
+
 /** Full snapshots of a period: originals and RESTATEMENTs, not NEW HOLDINGS amendments. */
 export const FULL_SNAPSHOT: Document = {
   $or: [{ formType: { $ne: '13F-HR/A' } }, { amendmentType: { $ne: 'NEW HOLDINGS' } }],
