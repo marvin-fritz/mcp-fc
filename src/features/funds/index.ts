@@ -6,7 +6,7 @@ import { escapeRegex, resolveSecurity } from '../../db/identifiers.js';
 import { fmtDate, fmtMillions, fmtNum, fmtPct } from '../../format/num.js';
 import { table } from '../../format/table.js';
 import { ToolError, type FeatureModule } from '../types.js';
-import { ACTIVE, FULL_SNAPSHOT, cusipFromIsin, holdersPipeline } from './holders.js';
+import { ACTIVE, FULL_SNAPSHOT, HOLDERS_MAX_TIME_MS, cusipFromIsin, holdersPipeline } from './holders.js';
 
 async function findFund(db: Db, q: string): Promise<Document | null> {
   const c = cols(db).funds;
@@ -109,7 +109,7 @@ export const fundsFeature: FeatureModule = {
           // per-period match + $filter keeps this in the milliseconds even for widely-held stocks
           const cusip = cusipFromIsin(ref.isin);
           const holdersFor = (p: string) =>
-            c.f13Filings.aggregate(holdersPipeline(p, ref.isin, cusip, lim), { maxTimeMS: MAX_TIME_MS }).toArray();
+            c.f13Filings.aggregate(holdersPipeline(p, ref.isin, cusip, lim), { maxTimeMS: HOLDERS_MAX_TIME_MS }).toArray();
           let period = input.period;
           let holders: Document[] = [];
           if (period) {

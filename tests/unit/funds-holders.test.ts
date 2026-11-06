@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ACTIVE, cusipFromIsin, holdersPipeline } from '../../src/features/funds/holders.js';
 
 describe('cusipFromIsin', () => {
@@ -37,5 +37,26 @@ describe('holdersPipeline', () => {
     const [m] = holdersPipeline('2025-12-31', 'IE00B4BNMY34', null, 50);
     expect(m.$match['holdings.isin']).toBe('IE00B4BNMY34');
     expect(m.$match['holdings.cusip']).toBeUndefined();
+  });
+});
+
+describe('get_fund_holdings time budget', () => {
+  it('gives the holders aggregation its own, larger maxTimeMS', async () => {
+    const { fundsFeature } = await import('../../src/features/funds/index.js');
+    const { HOLDERS_MAX_TIME_MS } = await import('../../src/features/funds/holders.js');
+    const { MAX_TIME_MS } = await import('../../src/db/client.js');
+    const aggregate = vi.fn(() => ({ toArray: async () => [{ cik: 1, companyName: 'Fund', valueUsd: 1e6, shares: 10 }] }));
+    const collections: Record<string, unknown> = {
+      stockIndex: { findOne: async () => ({ isin: 'US0378331005', ticker: 'AAPL', name: 'Apple Inc.' }) },
+      f13Filings: { aggregate },
+    };
+    const db = { collection: (name: string) => collections[name] ?? {} } as any;
+    const tool = fundsFeature.tools.find((t) => t.name === 'get_fund_holdings')!;
+
+    await tool.handler({ identifier: 'AAPL', period: '2026-03-31' }, { db } as any);
+
+    expect(aggregate).toHaveBeenCalledTimes(1);
+    expect(aggregate.mock.calls[0][1]).toEqual({ maxTimeMS: HOLDERS_MAX_TIME_MS });
+    expect(HOLDERS_MAX_TIME_MS).toBeGreaterThan(MAX_TIME_MS);
   });
 });
