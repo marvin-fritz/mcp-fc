@@ -6,6 +6,7 @@ import { escapeRegex, resolveSecurity } from '../../db/identifiers.js';
 import { fmtDate, fmtMillions, fmtNum, fmtPct } from '../../format/num.js';
 import { table } from '../../format/table.js';
 import { ToolError, type FeatureModule } from '../types.js';
+import { ACTIVE, FULL_SNAPSHOT, cusipFromIsin, holdersPipeline } from './holders.js';
 
 async function findFund(db: Db, q: string): Promise<Document | null> {
   const c = cols(db).funds;
@@ -72,16 +73,21 @@ export const fundsFeature: FeatureModule = {
         if (input.fund) {
           const fund = await findFund(db, input.fund);
           if (!fund) throw new ToolError(`fund '${input.fund}' not found — use search_funds`);
-          const filing = (
-            await c.f13Filings
-              .find(
-                { cik: fund.cik, ...(input.period ? { reportPeriod: input.period } : {}) },
-                { projection: { holdings: 1, reportPeriod: 1 }, sort: { reportPeriod: -1, filedAt: -1 }, limit: 1, maxTimeMS: MAX_TIME_MS },
-              )
-              .toArray()
-          )[0];
-          if (!filing) throw new ToolError(`no 13F filing for CIK ${fund.cik}${input.period ? ` at ${input.period}` : ''}`);
-          const holdings = (filing.holdings ?? []) as Document[];
+          const active = { cik: fund.cik, ...ACTIVE };
+          let period: string | undefined = input.period;
+          if (!period) {
+            const latest = await c.f13Filings
+              .find({ ...active, ...FULL_SNAPSHOT }, { projection: { reportPeriod: 1 }, sort: { reportPeriod: -1 }, limit: 1, maxTimeMS: MAX_TIME_MS })
+              .toArray();
+            period = latest[0]?.reportPeriod;
+          }
+          // the period's portfolio = its active full snapshot plus additive NEW HOLDINGS amendments
+          const filings = period
+            ? await c.f13Filings.find({ ...active, reportPeriod: period }, { projection: { holdings: 1 }, maxTimeMS: MAX_TIME_MS }).toArray()
+            : [];
+          if (filings.length === 0) throw new ToolError(`no 13F filing for CIK ${fund.cik}${input.period ? ` at ${input.period}` : ''}`);
+          const filing = { reportPeriod: period };
+          const holdings = filings.flatMap((f) => (f.holdings ?? []) as Document[]);
           const total = holdings.reduce((s, x) => s + (x.valueUsd ?? 0), 0);
           const top = [...holdings].sort((a, b) => (b.valueUsd ?? 0) - (a.valueUsd ?? 0)).slice(0, lim);
           const body = table(
@@ -101,20 +107,9 @@ export const fundsFeature: FeatureModule = {
           const ref = await resolveSecurity(db, input.identifier);
           if (!ref) throw new ToolError(`unknown identifier '${input.identifier}' — use search_securities`);
           // per-period match + $filter keeps this in the milliseconds even for widely-held stocks
+          const cusip = cusipFromIsin(ref.isin);
           const holdersFor = (p: string) =>
-            c.f13Filings
-              .aggregate(
-                [
-                  { $match: { reportPeriod: p, 'holdings.isin': ref.isin } },
-                  { $project: { companyName: 1, cik: 1, h: { $filter: { input: '$holdings', cond: { $eq: ['$$this.isin', ref.isin] } } } } },
-                  { $unwind: '$h' },
-                  { $project: { companyName: 1, cik: 1, valueUsd: '$h.valueUsd', shares: '$h.shares' } },
-                  { $sort: { valueUsd: -1 } },
-                  { $limit: lim },
-                ],
-                { maxTimeMS: MAX_TIME_MS },
-              )
-              .toArray();
+            c.f13Filings.aggregate(holdersPipeline(p, ref.isin, cusip, lim), { maxTimeMS: MAX_TIME_MS }).toArray();
           let period = input.period;
           let holders: Document[] = [];
           if (period) {
@@ -135,7 +130,7 @@ export const fundsFeature: FeatureModule = {
             ['fund', 'cik', 'value(USDm)', 'shares'],
             holders.map((x) => [x.companyName, x.cik, fmtMillions(x.valueUsd), fmtNum(x.shares, 0)]),
           );
-          return `# holders of ${ref.isin}, 13F ${fmtDate(period)} (recent quarters may be partially filed — pass period for a complete one)\n${body}`;
+          return `# holders of ${ref.isin}, 13F ${fmtDate(period)}, one row per filer, share positions only (recent quarters may be partially filed — pass period for a complete one)\n${body}`;
         }
         throw new ToolError('provide either fund or identifier');
       },
