@@ -86,7 +86,7 @@ async function main(): Promise<void> {
     log.info({ issuer: config.publicUrl }, 'oauth enabled');
   }
   const app = buildApp(config, { db, log, jobs: telemetry?.jobs }, authDb, telemetry?.http);
-  app.listen(config.port, () => log.info(`mcp-fc listening on :${config.port}`));
+  app.listen(config.port, config.host, () => log.info(`mcp-fc listening on ${config.host}:${config.port}`));
   if (telemetry) {
     startHeartbeat(telemetry, { mongoUri: config.mongoUri, database: config.mongoDb, onWarn: (message) => log.warn(message) });
   }
