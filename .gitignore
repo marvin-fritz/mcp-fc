@@ -2,3 +2,6 @@ node_modules/
 dist/
 .env
 *.log
+dist.new/
+dist.prev/
+dist.failed/

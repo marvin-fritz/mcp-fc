@@ -7,9 +7,14 @@
     npm ci
     npm run build
 
-Updates later:
+Updates later (on kvm12996 via the shared deploy tool, see Finanz-Copilot/ops/fc-deploy):
 
-    cd /opt/mcp-fc && git pull && npm ci && npm run build && sudo systemctl restart mcp-fc
+    fc-deploy mcp-fc            # on the server, or `bin/fc-deploy mcp-fc` from the workspace
+
+This runs `update.sh`: `npm ci` only when `package-lock.json` changed, build into
+`dist.new` and swap with `dist` (previous build kept in `dist.prev`),
+`ensure-indexes`, restart, `/healthz` check. Rollback: `fc-deploy rollback mcp-fc`.
+Without fc-deploy: `sudo bash /opt/mcp-fc/update.sh` (pulls `origin main` itself).
 
 ## Configure
 
