@@ -94,7 +94,7 @@ http="$(curl -s -o /dev/null -w '%{http_code}' "$HEALTH_URL" || echo 000)"
 
 if [[ "$state" != "active" ]] || (( ${restarts_after:-0} > ${restarts_before:-0} )) || [[ "$http" != "200" ]]; then
     warn "Dienst nicht gesund: status=${state}, Neustarts ${restarts_before} -> ${restarts_after}, HTTP ${http}"
-    journalctl -u "$SERVICE_NAME" -n 30 --no-pager || true
+    journalctl _SYSTEMD_UNIT="${SERVICE_NAME%.service}.service" -n 30 --no-pager || true
     if [[ -d "${INSTALL_DIR}/dist.prev" ]]; then
         warn "Schalte auf den vorigen Build (dist.prev) zurück und starte neu."
         as_owner "rm -rf dist.failed && mv dist dist.failed && mv dist.prev dist"
