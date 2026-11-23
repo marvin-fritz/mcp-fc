@@ -6,6 +6,32 @@ import { fmtDate, fmtNum } from '../../format/num.js';
 import { table } from '../../format/table.js';
 import { ToolError, type FeatureModule } from '../types.js';
 
+export interface InsiderFilterInput {
+  from?: string;
+  to?: string;
+  transactionType?: string;
+  minAmount?: number;
+}
+
+/**
+ * Mongo filter for get_insider_trades. Trades replaced by a correction notice
+ * (Kraken sets supersededBy on the original, so far only SER) are never listed —
+ * otherwise original and correction both show up. `null` also matches a missing field.
+ */
+export function buildInsiderFilter(input: InsiderFilterInput, isin?: string): Record<string, unknown> {
+  const filter: Record<string, unknown> = { supersededBy: null };
+  if (isin) filter.isin = isin;
+  if (input.from || input.to) {
+    filter.transactionDate = {
+      ...(input.from ? { $gte: new Date(`${input.from}T00:00:00Z`) } : {}),
+      ...(input.to ? { $lte: new Date(`${input.to}T23:59:59.999Z`) } : {}),
+    };
+  }
+  if (input.transactionType) filter.transactionType = input.transactionType;
+  if (input.minAmount != null) filter.totalAmount = { $gte: input.minAmount };
+  return filter;
+}
+
 export const insiderFeature: FeatureModule = {
   name: 'insider',
   tools: [
@@ -28,20 +54,13 @@ export const insiderFeature: FeatureModule = {
       handler: async (input, { db }) => {
         const lim = Math.min(input.limit ?? 25, 100);
         const offset = input.offset ?? 0;
-        const filter: Record<string, unknown> = {};
+        let isin: string | undefined;
         if (input.identifier) {
           const ref = await resolveSecurity(db, input.identifier);
           if (!ref) throw new ToolError(`unknown identifier '${input.identifier}' — use search_securities`);
-          filter.isin = ref.isin;
+          isin = ref.isin;
         }
-        if (input.from || input.to) {
-          filter.transactionDate = {
-            ...(input.from ? { $gte: new Date(`${input.from}T00:00:00Z`) } : {}),
-            ...(input.to ? { $lte: new Date(`${input.to}T23:59:59.999Z`) } : {}),
-          };
-        }
-        if (input.transactionType) filter.transactionType = input.transactionType;
-        if (input.minAmount != null) filter.totalAmount = { $gte: input.minAmount };
+        const filter = buildInsiderFilter(input, isin);
         const docs = await cols(db)
           .insiderTrades.find(filter, {
             projection: {
