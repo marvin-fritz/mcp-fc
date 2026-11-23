@@ -22,6 +22,8 @@ Create `/opt/mcp-fc/.env` from `.env.example`. Generate keys with:
 
     openssl rand -hex 32
 
+The server binds to `127.0.0.1` by default (`MCP_HOST`); nginx proxies the public domain to it. Set `MCP_HOST=0.0.0.0` only when running without a reverse proxy.
+
 Entry format: `MCP_API_KEYS=<name>:<key>=read` (comma-separated for multiple agents;
 scopes: `read`, later `write`).
 

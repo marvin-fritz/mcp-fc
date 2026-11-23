@@ -8,6 +8,8 @@ export interface ApiKeyDef {
 
 export interface Config {
   port: number;
+  /** Bind address. Default 127.0.0.1: nginx proxies mcp.finanz-copilot.de to 127.0.0.1:8814. */
+  host: string;
   mongoUri: string;
   mongoDb: string;
   authDisabled: boolean;
@@ -50,6 +52,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const port = Number(env.MCP_PORT ?? 8814);
   return {
     port,
+    host: env.MCP_HOST ?? '127.0.0.1',
     mongoUri: env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017',
     mongoDb: env.MONGODB_DB ?? 'financecentre',
     authDisabled,

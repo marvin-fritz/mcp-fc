@@ -21,10 +21,16 @@ describe('loadConfig', () => {
   it('applies defaults and parses env', () => {
     const c = loadConfig({ MCP_API_KEYS: 'a:k=read' });
     expect(c.port).toBe(8814);
+    expect(c.host).toBe('127.0.0.1');
     expect(c.mongoUri).toBe('mongodb://127.0.0.1:27017');
     expect(c.mongoDb).toBe('financecentre');
     expect(c.authDisabled).toBe(false);
     expect(c.apiKeys).toHaveLength(1);
+  });
+
+  it('binds to localhost by default and honours MCP_HOST', () => {
+    expect(loadConfig({ MCP_AUTH_DISABLED: 'true' }).host).toBe('127.0.0.1');
+    expect(loadConfig({ MCP_AUTH_DISABLED: 'true', MCP_HOST: '0.0.0.0' }).host).toBe('0.0.0.0');
   });
 
   it('requires keys unless auth is disabled', () => {
